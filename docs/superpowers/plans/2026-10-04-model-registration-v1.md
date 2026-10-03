@@ -253,7 +253,7 @@ Run: `uv run pytest tests/unit -v` — Expected: FAIL, domain module missing
 
 - [ ] **Step 3: Implement `identity.py`, `lifecycle.py`, `events.py`**
 
-Signatures as in Interfaces; transition matrix written directly from spec §12.2 (nine allowed edges, everything else False).
+Signatures as in Interfaces; transition matrix written directly from spec §12.2 (ten allowed edges — 3+3+3+1, everything else False).
 
 - [ ] **Step 4: Run tests, verify they pass**
 
