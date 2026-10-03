@@ -9,7 +9,9 @@ import sqlalchemy as sa
 from alembic.config import Config
 
 from alembic import command
+from app.core.config import settings
 from app.core.db import SessionLocal
+from app.modules.model_inventory.services import ModelService
 
 TEST_DB_NAME = "auditra_test"
 MAINTENANCE_URL = "postgresql+psycopg://auditra:auditra@localhost:5433/postgres"
@@ -50,3 +52,8 @@ def db(database):
         )
         session.commit()
         session.close()
+
+
+@pytest.fixture
+def service(db):
+    return ModelService(db, tenant_id=settings.default_tenant_id)
