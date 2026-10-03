@@ -147,6 +147,19 @@ def test_invalid_transition_rejected(db, service):
     assert fresh.record_version == 1
 
 
+def test_same_state_update_rejected(db, service):
+    seed_reference_data(db)
+    model = service.register_model(_payload(native_model_id="same-state-1"))
+
+    with pytest.raises(InvalidTransitionError) as exc:
+        service.update_model(model.id, ModelUpdate(lifecycle_state="REGISTERED"))
+
+    assert exc.value.code == "INVALID_LIFECYCLE_TRANSITION"
+    fresh = service.get_model(model.id)
+    assert fresh.lifecycle_state == "REGISTERED"
+    assert fresh.record_version == 1
+
+
 def test_archived_is_terminal(db, service):
     seed_reference_data(db)
     model = service.register_model(_payload(native_model_id="term-1"))
@@ -240,9 +253,15 @@ def test_list_filters_and_search(db, service):
 
 def test_list_sort_allowlist(db, service):
     seed_reference_data(db)
-    service.register_model(_payload(provider_slug="openai", name="B Model", native_model_id="sort-1"))
-    service.register_model(_payload(provider_slug="anthropic", name="A Model", native_model_id="sort-2"))
-    service.register_model(_payload(provider_slug="google", name="C Model", native_model_id="sort-3"))
+    service.register_model(
+        _payload(provider_slug="openai", name="B Model", native_model_id="sort-1")
+    )
+    service.register_model(
+        _payload(provider_slug="anthropic", name="A Model", native_model_id="sort-2")
+    )
+    service.register_model(
+        _payload(provider_slug="google", name="C Model", native_model_id="sort-3")
+    )
 
     items, _ = service.list_models(ModelFilters(), sort_by="provider", sort_order="asc")
     assert [m.name for m in items] == ["A Model", "C Model", "B Model"]

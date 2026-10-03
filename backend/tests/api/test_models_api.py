@@ -3,7 +3,7 @@ from uuid import uuid4
 import sqlalchemy as sa
 
 from app.main import app
-from app.modules.model_inventory.models import ModelProvider
+from app.modules.model_inventory.models import ModelProvider, ModelType
 from app.modules.model_inventory.services import ModelService
 
 API = "/api/v1"
@@ -77,10 +77,17 @@ def test_e2e_registration_workflow(client):
     assert archived.text == ""
 
 
+def test_description_and_ownership_roundtrip(client):
+    created = client.post(f"{API}/models", json=_payload()).json()
+    fetched = client.get(f"{API}/models/{created['id']}").json()
+    assert fetched["description"] == "Answers customer questions"
+    assert fetched["owner_name"] == "AI Team"
+    assert fetched["owner_contact"] == "ai-team@example.com"
+    assert fetched["team_name"] == "Support"
+
+
 def test_get_missing_returns_404_envelope(client):
-    response = client.get(
-        f"{API}/models/{uuid4()}", headers={"X-Request-ID": "req-missing-1"}
-    )
+    response = client.get(f"{API}/models/{uuid4()}", headers={"X-Request-ID": "req-missing-1"})
     assert response.status_code == 404
     error = _error(response)
     assert error["code"] == "MODEL_NOT_FOUND"
@@ -94,9 +101,7 @@ def test_get_missing_returns_404_envelope(client):
 def test_patch_identity_fields_rejected(client):
     model_id = client.post(f"{API}/models", json=_payload()).json()["id"]
 
-    patched = client.patch(
-        f"{API}/models/{model_id}", json={"native_model_id": "renamed-identity"}
-    )
+    patched = client.patch(f"{API}/models/{model_id}", json={"native_model_id": "renamed-identity"})
     assert patched.status_code == 409
     assert _error(patched)["code"] == "MODEL_IDENTITY_CONFLICT"
 
@@ -130,9 +135,7 @@ def test_archive_workflow(client):
     assert archived_page["items"][0]["id"] == model_id
     assert archived_page["items"][0]["lifecycle_state"] == "ARCHIVED"
 
-    explicit_archived = client.get(
-        f"{API}/models", params={"lifecycle_state": "ARCHIVED"}
-    ).json()
+    explicit_archived = client.get(f"{API}/models", params={"lifecycle_state": "ARCHIVED"}).json()
     assert explicit_archived["total"] == 0
 
     assert client.get(f"{API}/models/{model_id}").status_code == 200
@@ -166,9 +169,7 @@ def test_search_filter_sort_pagination(client):
     assert by_provider["total"] == 1
     assert by_provider["items"][0]["name"] == "Beta"
 
-    ascending = client.get(
-        f"{API}/models", params={"sort_by": "name", "sort_order": "asc"}
-    ).json()
+    ascending = client.get(f"{API}/models", params={"sort_by": "name", "sort_order": "asc"}).json()
     assert [item["name"] for item in ascending["items"]] == [
         "Alpha Search Target",
         "Beta",
@@ -246,6 +247,20 @@ def test_lookup_endpoints(client, db):
     assert len(type_body) >= 15
     type_names = [entry["name"] for entry in type_body]
     assert type_names == sorted(type_names)
+
+
+def test_custom_provider_and_type_accepted(client, db):
+    db.add(ModelProvider(slug="acme", name="Acme AI"))
+    db.add(ModelType(slug="audio", name="Audio Model", is_active=True, is_system=False))
+    db.commit()
+
+    created = client.post(
+        f"{API}/models", json=_payload(provider_slug="acme", model_type_slug="audio")
+    )
+    assert created.status_code == 201
+    body = created.json()
+    assert body["provider"]["slug"] == "acme"
+    assert body["model_type"]["slug"] == "audio"
 
 
 def test_openapi_contract(client):

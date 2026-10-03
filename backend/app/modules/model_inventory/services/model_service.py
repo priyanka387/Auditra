@@ -74,8 +74,7 @@ class ModelService:
             raise DuplicateModelError(f"model '{canonical_key}' is already registered")
 
         tag_ids = [
-            self._resolve_tag(key, value)
-            for key, value in dict.fromkeys(parse_tags(payload.tags))
+            self._resolve_tag(key, value) for key, value in dict.fromkeys(parse_tags(payload.tags))
         ]
         model = create_model(
             self.db,

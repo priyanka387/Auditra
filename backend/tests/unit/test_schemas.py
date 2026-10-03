@@ -105,3 +105,8 @@ def test_extra_field_forbidden():
             native_model_id="gpt-4o",
             bogus=1,
         )
+
+
+def test_update_extra_field_forbidden():
+    with pytest.raises(ValidationError):
+        ModelUpdate(bogus=1)

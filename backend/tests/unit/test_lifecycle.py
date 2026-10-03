@@ -39,3 +39,7 @@ def test_archived_is_terminal():
 
 def test_initial_states():
     assert INITIAL_STATES == {"REGISTERED", "ACTIVE"}
+
+
+def test_matrix_keys_match_states():
+    assert set(ALLOWED_TRANSITIONS) == set(STATES)

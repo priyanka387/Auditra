@@ -19,9 +19,7 @@ HOSTING_MODES: set[str] = {
     "EMBEDDED",
     "CUSTOM",
 }
-SECRET_KEY_RE = re.compile(
-    r"(?i)(api[_-]?key|secret|token|password|credential|private[_-]?key)"
-)
+SECRET_KEY_RE = re.compile(r"(?i)(api[_-]?key|secret|token|password|credential|private[_-]?key)")
 
 
 def parse_tags(raw: list[str]) -> list[tuple[str, str]]:

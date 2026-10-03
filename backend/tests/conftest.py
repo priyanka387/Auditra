@@ -1,6 +1,8 @@
 import os
 
-os.environ["AUDITRA_DATABASE_URL"] = "postgresql+psycopg://auditra:auditra@localhost:5433/auditra_test"
+os.environ["AUDITRA_DATABASE_URL"] = (
+    "postgresql+psycopg://auditra:auditra@localhost:5433/auditra_test"
+)
 
 from pathlib import Path
 
