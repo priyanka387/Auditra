@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Python >= 3.11; every command runs via `uv run` from `backend/` (uv-managed isolated venv). No global pip installs.
-- PostgreSQL 16 only, via root `docker-compose.yml`: db `auditra`, user `auditra`, password `auditra`, port 5432; test db `auditra_test`. No Redis, RustFS, vector DB, Kafka, OpenSearch (spec §43).
+- PostgreSQL 16 only, via root `docker-compose.yml`: db `auditra`, user `auditra`, password `auditra`, host port 5433 mapped to container 5432 (host machine runs PostgreSQL 18 on 5432); test db `auditra_test`. No Redis, RustFS, vector DB, Kafka, OpenSearch (spec §43).
 - Backend only. No frontend, no microservices, no auth system (spec §4 non-goals).
 - Sync SQLAlchemy 2.0 (`Mapped[]` declarative) + psycopg3; FastAPI sync route handlers (`def`, not `async def`). Decision recorded here because spec leaves async "where appropriate".
 - `canonical_key = f"{provider_slug.strip().lower()}|{native_model_id.strip()}"` — provider slug lowercased, native id case-preserved, both trimmed. Unique per `(tenant_id, canonical_key)` (spec §9.2/§9.3).
@@ -128,7 +128,7 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'app'` (or import error
 
 - [ ] **Step 4: Implement config + app factory**
 
-`app/core/config.py`: `class Settings(BaseSettings)` with `database_url: str = "postgresql+psycopg://auditra:auditra@localhost:5432/auditra"`, `default_tenant_id: UUID = UUID("11111111-1111-1111-1111-111111111111")`, `model_config = SettingsConfigDict(env_prefix="AUDITRA_", env_file=".env")`; module-level `settings = Settings()`.
+`app/core/config.py`: `class Settings(BaseSettings)` with `database_url: str = "postgresql+psycopg://auditra:auditra@localhost:5433/auditra"`, `default_tenant_id: UUID = UUID("11111111-1111-1111-1111-111111111111")`, `model_config = SettingsConfigDict(env_prefix="AUDITRA_", env_file=".env")`; module-level `settings = Settings()`.
 
 `app/main.py`: `def create_app() -> FastAPI` building app with `title="Auditra"`, registering `GET /health` returning `{"status": "ok"}`; module-level `app = create_app()`.
 
@@ -139,7 +139,7 @@ Expected: PASS
 
 - [ ] **Step 6: Docker Compose PostgreSQL + env file**
 
-Root `docker-compose.yml`: service `postgres`, image `postgres:16-alpine`, ports `"5432:5432"`, env `POSTGRES_USER=auditra`, `POSTGRES_PASSWORD=auditra`, `POSTGRES_DB=auditra`, named volume `pgdata`, healthcheck `pg_isready -U auditra`. Root `.env.example` with `AUDITRA_DATABASE_URL` and `AUDITRA_DEFAULT_TENANT_ID` commented examples.
+Root `docker-compose.yml`: service `postgres`, image `postgres:16-alpine`, ports `"5433:5432"`, env `POSTGRES_USER=auditra`, `POSTGRES_PASSWORD=auditra`, `POSTGRES_DB=auditra`, named volume `pgdata`, healthcheck `pg_isready -U auditra`. Root `.env.example` with `AUDITRA_DATABASE_URL` and `AUDITRA_DEFAULT_TENANT_ID` commented examples.
 
 Run: `docker compose up -d; docker compose ps`
 Expected: `postgres` container state `healthy`
@@ -204,7 +204,7 @@ Then: `uv run alembic revision --autogenerate -m "model registration tables"`, r
 
 - [ ] **Step 5: Test conftest (test DB + truncate)**
 
-`tests/conftest.py`: session-scoped fixture sets `AUDITRA_DATABASE_URL` to `postgresql+psycopg://auditra:auditra@localhost:5432/auditra_test` before importing app config; connects to `postgres` maintenance DB, `DROP ... CREATE DATABASE auditra_test`, runs `alembic.command.upgrade(cfg, "head")`. Function-scoped `db` fixture yields Session then runs `TRUNCATE model_tag_links, model_tags, models, model_types, model_providers RESTART IDENTITY CASCADE`.
+`tests/conftest.py`: session-scoped fixture sets `AUDITRA_DATABASE_URL` to `postgresql+psycopg://auditra:auditra@localhost:5433/auditra_test` before importing app config; connects to `postgres` maintenance DB, `DROP ... CREATE DATABASE auditra_test`, runs `alembic.command.upgrade(cfg, "head")`. Function-scoped `db` fixture yields Session then runs `TRUNCATE model_tag_links, model_tags, models, model_types, model_providers RESTART IDENTITY CASCADE`.
 
 - [ ] **Step 6: Run tests, verify they pass**
 
