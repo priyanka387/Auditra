@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 from app.modules.model_inventory.domain import INITIAL_STATES, LifecycleState
 
@@ -48,18 +48,24 @@ def validate_metadata(md: dict) -> None:
 
 
 class ProviderSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     slug: str
     name: str
 
 
 class ModelTypeSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     slug: str
     name: str
 
 
 class TagResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     key: str
     value: str
 
@@ -130,6 +136,12 @@ class ModelCreate(BaseModel):
         validate_metadata(value)
         return value
 
+    @field_validator("tags")
+    @classmethod
+    def _check_tags(cls, value: list[str]) -> list[str]:
+        parse_tags(value)
+        return value
+
 
 class ModelUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -182,8 +194,17 @@ class ModelUpdate(BaseModel):
             validate_metadata(value)
         return value
 
+    @field_validator("tags")
+    @classmethod
+    def _check_tags(cls, value: list[str] | None) -> list[str] | None:
+        if value is not None:
+            parse_tags(value)
+        return value
+
 
 class ModelResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     tenant_id: UUID
     name: str
@@ -201,13 +222,13 @@ class ModelResponse(BaseModel):
     owner_contact: str | None
     team_name: str | None
     tags: list[TagResponse]
-    metadata: dict
+    metadata: dict = Field(validation_alias=AliasChoices("metadata_", "metadata"))
     created_at: datetime
     updated_at: datetime
     archived_at: datetime | None
     created_by: UUID | None
     updated_by: UUID | None
-    version: int
+    version: int = Field(validation_alias=AliasChoices("version", "record_version"))
 
 
 class ModelListResponse(BaseModel):

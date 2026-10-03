@@ -16,9 +16,31 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
+from app.modules.model_inventory.models.provider import ModelProvider, ModelType
+
+
+class ModelTag(Base):
+    __tablename__ = "model_tags"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "key", "value", name="uq_model_tags_tenant_key_value"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID] = mapped_column()
+    key: Mapped[str] = mapped_column(String(128))
+    value: Mapped[str] = mapped_column(String(512))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ModelTagLink(Base):
+    __tablename__ = "model_tag_links"
+
+    model_id: Mapped[UUID] = mapped_column(ForeignKey("models.id"), primary_key=True)
+    tag_id: Mapped[UUID] = mapped_column(ForeignKey("model_tags.id"), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class Model(Base):
@@ -70,23 +92,10 @@ class Model(Base):
     updated_by: Mapped[str | None] = mapped_column(String(255))
     record_version: Mapped[int] = mapped_column(BigInteger, default=1, server_default=text("1"))
 
-
-class ModelTag(Base):
-    __tablename__ = "model_tags"
-    __table_args__ = (
-        UniqueConstraint("tenant_id", "key", "value", name="uq_model_tags_tenant_key_value"),
+    provider: Mapped[ModelProvider] = relationship(foreign_keys=[provider_id])
+    model_type: Mapped[ModelType] = relationship(foreign_keys=[model_type_id])
+    tags: Mapped[list[ModelTag]] = relationship(
+        secondary=ModelTagLink.__table__,
+        order_by=(ModelTag.key, ModelTag.value),
+        viewonly=True,
     )
-
-    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    tenant_id: Mapped[UUID] = mapped_column()
-    key: Mapped[str] = mapped_column(String(128))
-    value: Mapped[str] = mapped_column(String(512))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-
-
-class ModelTagLink(Base):
-    __tablename__ = "model_tag_links"
-
-    model_id: Mapped[UUID] = mapped_column(ForeignKey("models.id"), primary_key=True)
-    tag_id: Mapped[UUID] = mapped_column(ForeignKey("model_tags.id"), primary_key=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

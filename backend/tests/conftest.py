@@ -7,11 +7,14 @@ from pathlib import Path
 import pytest
 import sqlalchemy as sa
 from alembic.config import Config
+from fastapi.testclient import TestClient
 
 from alembic import command
 from app.core.config import settings
 from app.core.db import SessionLocal
+from app.main import app
 from app.modules.model_inventory.services import ModelService
+from app.seed import seed_reference_data
 
 TEST_DB_NAME = "auditra_test"
 MAINTENANCE_URL = "postgresql+psycopg://auditra:auditra@localhost:5433/postgres"
@@ -57,3 +60,10 @@ def db(database):
 @pytest.fixture
 def service(db):
     return ModelService(db, tenant_id=settings.default_tenant_id)
+
+
+@pytest.fixture
+def client(db):
+    seed_reference_data(db)
+    db.commit()
+    yield TestClient(app)

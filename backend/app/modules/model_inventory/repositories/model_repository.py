@@ -5,7 +5,7 @@ from uuid import UUID
 
 from sqlalchemy import Select, func, or_, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.modules.model_inventory.domain.errors import DuplicateModelError, InvalidSortFieldError
 from app.modules.model_inventory.models import (
@@ -71,7 +71,16 @@ def create_model(db: Session, **fields: Any) -> Model:
 
 
 def get_model(db: Session, tenant_id: UUID, model_id: UUID) -> Model | None:
-    return db.scalar(select(Model).where(Model.tenant_id == tenant_id, Model.id == model_id))
+    stmt = (
+        select(Model)
+        .options(
+            selectinload(Model.tags),
+            joinedload(Model.provider),
+            joinedload(Model.model_type),
+        )
+        .where(Model.tenant_id == tenant_id, Model.id == model_id)
+    )
+    return db.scalar(stmt)
 
 
 def _filtered_models(tenant_id: UUID, filters: ModelFilters, include_archived: bool) -> Select:
@@ -150,7 +159,16 @@ def query_models(
     base = _filtered_models(tenant_id, filters, include_archived)
     total = db.scalar(select(func.count()).select_from(base.subquery()))
     direction = sort_column.desc() if str(sort_order).lower() == "desc" else sort_column.asc()
-    stmt = base.order_by(direction, Model.id.asc()).offset((page - 1) * page_size).limit(page_size)
+    stmt = (
+        base.options(
+            selectinload(Model.tags),
+            joinedload(Model.provider),
+            joinedload(Model.model_type),
+        )
+        .order_by(direction, Model.id.asc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
     return list(db.scalars(stmt).all()), total
 
 
