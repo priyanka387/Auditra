@@ -21,7 +21,8 @@
 - Tenant: `settings.default_tenant_id` (fixed dev UUID). Every repository query takes `tenant_id` as a required argument (spec §15).
 - Pagination: `page` >= 1 default 1, `page_size` default 25 max 100 (over-max => 422). Default sort `updated_at desc`. Sort allowlist: `name, created_at, updated_at, lifecycle_state, provider, model_type`; always secondary-order by `id ASC` (spec §23).
 - `metadata` JSON: serialized size <= 10,000 bytes; keys matching `(?i)(api[_-]?key|secret|token|password|credential|private[_-]?key)` => 422 (spec §25.3/§25.4).
-- Error envelope: `{"error": {"code", "message", "details", "request_id"}}`. Error codes/HTTP: MODEL_NOT_FOUND 404, MODEL_ALREADY_EXISTS 409, MODEL_IDENTITY_CONFLICT 409, PROVIDER_NOT_FOUND 404, PROVIDER_INACTIVE 409, MODEL_TYPE_NOT_FOUND 404, INVALID_LIFECYCLE_TRANSITION 409, MODEL_ARCHIVED 409, INVALID_SORT_FIELD 400, VALIDATION_ERROR 422, INTERNAL_ERROR 500 (spec §19).
+- Tag key <= 128 chars / tag value <= 512 chars (matches `model_tags` columns) => 422 (spec §25.4).
+- Error envelope: `{"error": {"code", "message", "details", "request_id"}}`. Error codes/HTTP: MODEL_NOT_FOUND 404, MODEL_ALREADY_EXISTS 409, MODEL_IDENTITY_CONFLICT 409, PROVIDER_NOT_FOUND 404, PROVIDER_INACTIVE 409, MODEL_TYPE_NOT_FOUND 404, MODEL_TYPE_INACTIVE 409, INVALID_LIFECYCLE_TRANSITION 409, MODEL_ARCHIVED 409, INVALID_SORT_FIELD 400, VALIDATION_ERROR 422, INTERNAL_ERROR 500 (spec §19).
 - `DELETE /models/{id}` = archive (204), never physical delete (spec §18.5/ADR-006).
 - Immutable via PATCH: `provider_slug`, `native_model_id` => 409 MODEL_IDENTITY_CONFLICT (spec §18.4).
 - `source_type` allowlist: `MANUAL, SDK, API, IMPORT`. `hosting_mode` allowlist: `CLOUD_API, SAAS_API, SELF_HOSTED, LOCAL, ON_PREMISE, EDGE, EMBEDDED, CUSTOM` (spec §13.3).

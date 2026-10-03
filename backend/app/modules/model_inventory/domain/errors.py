@@ -37,6 +37,11 @@ class ModelTypeNotFoundError(DomainError):
     http_status = 404
 
 
+class ModelTypeInactiveError(DomainError):
+    code = "MODEL_TYPE_INACTIVE"
+    http_status = 409
+
+
 class InvalidTransitionError(DomainError):
     code = "INVALID_LIFECYCLE_TRANSITION"
     http_status = 409

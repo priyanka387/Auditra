@@ -1,9 +1,10 @@
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import sqlalchemy as sa
 
 from app.main import app
-from app.modules.model_inventory.models import ModelProvider, ModelType
+from app.modules.model_inventory.models import Model, ModelProvider, ModelType
 from app.modules.model_inventory.services import ModelService
 
 API = "/api/v1"
@@ -304,3 +305,82 @@ def test_malformed_tag_returns_422(client):
     error = _error(response)
     assert error["code"] == "VALIDATION_ERROR"
     assert ["body", "tags"] in [detail["loc"] for detail in error["details"]]
+
+
+def test_inactive_model_type_returns_409(client, db):
+    model_type = db.scalar(sa.select(ModelType).where(ModelType.slug == "llm"))
+    model_type.is_active = False
+    db.commit()
+
+    response = client.post(f"{API}/models", json=_payload())
+    assert response.status_code == 409
+    assert _error(response)["code"] == "MODEL_TYPE_INACTIVE"
+
+
+def test_oversized_tag_returns_422(client):
+    key_response = client.post(f"{API}/models", json=_payload(tags=["k" * 200]))
+    assert key_response.status_code == 422
+    key_error = _error(key_response)
+    assert key_error["code"] == "VALIDATION_ERROR"
+    assert ["body", "tags"] in [detail["loc"] for detail in key_error["details"]]
+
+    value_response = client.post(f"{API}/models", json=_payload(tags=["k=" + "v" * 600]))
+    assert value_response.status_code == 422
+    assert _error(value_response)["code"] == "VALIDATION_ERROR"
+
+
+def test_patch_lifecycle_archived_sets_archived_at(client):
+    model_id = client.post(f"{API}/models", json=_payload()).json()["id"]
+
+    patched = client.patch(f"{API}/models/{model_id}", json={"lifecycle_state": "ARCHIVED"})
+    assert patched.status_code == 200
+    body = patched.json()
+    assert body["lifecycle_state"] == "ARCHIVED"
+    assert body["archived_at"] is not None
+
+    default_page = client.get(f"{API}/models").json()
+    assert default_page["total"] == 0
+    assert default_page["items"] == []
+
+    assert client.delete(f"{API}/models/{model_id}").status_code == 204
+
+
+def test_unknown_provider_returns_404(client):
+    response = client.post(f"{API}/models", json=_payload(provider_slug="does-not-exist"))
+    assert response.status_code == 404
+    assert _error(response)["code"] == "PROVIDER_NOT_FOUND"
+
+
+def test_unknown_model_type_returns_404(client):
+    response = client.post(f"{API}/models", json=_payload(model_type_slug="does-not-exist"))
+    assert response.status_code == 404
+    assert _error(response)["code"] == "MODEL_TYPE_NOT_FOUND"
+
+
+def test_date_range_filters(client, db):
+    first = client.post(
+        f"{API}/models", json=_payload(name="Early", native_model_id="early-1")
+    ).json()
+    second = client.post(
+        f"{API}/models", json=_payload(name="Late", native_model_id="late-1")
+    ).json()
+
+    db.execute(
+        sa.update(Model)
+        .where(Model.id == first["id"])
+        .values(created_at=datetime(2026, 1, 1, tzinfo=UTC))
+    )
+    db.execute(
+        sa.update(Model)
+        .where(Model.id == second["id"])
+        .values(created_at=datetime(2026, 6, 1, tzinfo=UTC))
+    )
+    db.commit()
+
+    after = client.get(f"{API}/models", params={"created_after": "2026-03-01T00:00:00Z"}).json()
+    assert after["total"] == 1
+    assert after["items"][0]["id"] == second["id"]
+
+    before = client.get(f"{API}/models", params={"created_before": "2026-03-01T00:00:00Z"}).json()
+    assert before["total"] == 1
+    assert before["items"][0]["id"] == first["id"]

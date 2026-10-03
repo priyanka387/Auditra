@@ -90,6 +90,27 @@ def test_parse_tags_empty_key_rejected():
         parse_tags(["=x"])
 
 
+def test_parse_tags_oversized_key_rejected():
+    with pytest.raises(ValueError):
+        parse_tags(["k" * 129])
+
+
+def test_parse_tags_oversized_value_rejected():
+    with pytest.raises(ValueError):
+        parse_tags(["k=" + "v" * 513])
+
+
+def test_create_oversized_tag_rejected():
+    with pytest.raises(ValidationError):
+        ModelCreate(
+            provider_slug="openai",
+            model_type_slug="llm",
+            name="Customer Support LLM",
+            native_model_id="gpt-4o",
+            tags=["k" * 200],
+        )
+
+
 def test_update_accepts_identity_fields():
     update = ModelUpdate(provider_slug="openai", native_model_id="x")
     assert update.provider_slug == "openai"

@@ -33,6 +33,10 @@ def parse_tags(raw: list[str]) -> list[tuple[str, str]]:
         key, value = key.strip(), value.strip()
         if not key:
             raise ValueError("tag key must not be empty")
+        if len(key) > 128:
+            raise ValueError("tag key must be at most 128 characters")
+        if len(value) > 512:
+            raise ValueError("tag value must be at most 512 characters")
         parsed.append((key, value))
     return parsed
 

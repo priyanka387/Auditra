@@ -16,6 +16,7 @@ from app.modules.model_inventory.domain.errors import (
     InvalidTransitionError,
     ModelArchivedError,
     ModelNotFoundError,
+    ModelTypeInactiveError,
     ModelTypeNotFoundError,
     ProviderInactiveError,
     ProviderNotFoundError,
@@ -68,6 +69,8 @@ class ModelService:
         model_type = get_model_type_by_slug(self.db, self.tenant_id, payload.model_type_slug)
         if model_type is None:
             raise ModelTypeNotFoundError(f"model type '{payload.model_type_slug}' not found")
+        if not model_type.is_active:
+            raise ModelTypeInactiveError(f"model type '{payload.model_type_slug}' is not active")
 
         canonical_key = build_canonical_key(payload.provider_slug, payload.native_model_id)
         if find_by_canonical_key(self.db, self.tenant_id, canonical_key) is not None:
@@ -152,6 +155,10 @@ class ModelService:
             model_type = get_model_type_by_slug(self.db, self.tenant_id, payload.model_type_slug)
             if model_type is None:
                 raise ModelTypeNotFoundError(f"model type '{payload.model_type_slug}' not found")
+            if not model_type.is_active:
+                raise ModelTypeInactiveError(
+                    f"model type '{payload.model_type_slug}' is not active"
+                )
             if model_type.id != model.model_type_id:
                 new_type_id = model_type.id
                 changed.append("model_type_slug")
@@ -169,6 +176,8 @@ class ModelService:
             value = getattr(payload, field)
             if value is not None:
                 setattr(model, field, value)
+        if model.lifecycle_state == "ARCHIVED" and model.archived_at is None:
+            model.archived_at = datetime.now(UTC)
         if new_type_id is not None:
             model.model_type_id = new_type_id
         if payload.metadata is not None:
