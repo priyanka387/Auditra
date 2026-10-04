@@ -217,7 +217,16 @@ def get_version(
     return _version_response(_version_service(request, db).get_version(model_id, version_id))
 
 
-@router.patch("/models/{model_id}/versions/{version_id}", response_model=ModelVersionResponse)
+@router.patch(
+    "/models/{model_id}/versions/{version_id}",
+    response_model=ModelVersionResponse,
+    description=(
+        "Update mutable version fields (display_name, description, metadata, "
+        "source_reference). Identity fields (model_id, identity_type, "
+        "native_version_id, canonical_version_key, version_label) are immutable "
+        "and rejected with 409 MODEL_VERSION_IDENTITY_IMMUTABLE."
+    ),
+)
 def update_version(
     model_id: UUID,
     version_id: UUID,

@@ -44,9 +44,18 @@ def parse_tags(raw: list[str]) -> list[tuple[str, str]]:
 def validate_metadata(md: dict) -> None:
     if len(json.dumps(md).encode("utf-8")) > 10_000:
         raise ValueError("metadata exceeds 10000 bytes when serialized")
-    for key in md:
-        if SECRET_KEY_RE.search(str(key)):
-            raise ValueError(f"metadata key {key!r} looks like a secret")
+    _reject_secret_keys(md)
+
+
+def _reject_secret_keys(value: Any) -> None:
+    if isinstance(value, dict):
+        for key, inner in value.items():
+            if SECRET_KEY_RE.search(str(key)):
+                raise ValueError(f"metadata key {key!r} looks like a secret")
+            _reject_secret_keys(inner)
+    elif isinstance(value, list):
+        for item in value:
+            _reject_secret_keys(item)
 
 
 class ProviderSummary(BaseModel):

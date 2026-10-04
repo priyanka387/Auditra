@@ -285,6 +285,12 @@ def test_openapi_contract(client):
     assert {"post"} <= set(paths["/api/v1/models/{model_id}/versions/{version_id}/lifecycle"])
     assert sum(len(methods) for methods in paths.values()) == 14
 
+    schemas = app.openapi()["components"]["schemas"]
+    assert {"ModelVersionCreate", "ModelVersionResponse"} <= set(schemas)
+
+    patch_doc = paths["/api/v1/models/{model_id}/versions/{version_id}"]["patch"]
+    assert "immutable" in (patch_doc.get("description") or "").lower()
+
 
 def test_error_body_has_no_traceback(client, monkeypatch):
     missing = client.get(f"{API}/models/{uuid4()}")

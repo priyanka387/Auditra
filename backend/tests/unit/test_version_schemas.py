@@ -64,6 +64,16 @@ def test_secret_and_oversized_metadata_rejected():
         _create(metadata={"blob": "x" * 10_001})
 
 
+def test_nested_secret_metadata_rejected():
+    with pytest.raises(ValueError):
+        _create(metadata={"config": {"api_key": "x"}})
+    assert ModelVersionCreate(
+        identity_type="release",
+        version_label="v1",
+        metadata={"config": {"region": "eu"}},
+    ).metadata == {"config": {"region": "eu"}}
+
+
 def test_update_accepts_identity_fields_for_explicit_rejection():
     u = ModelVersionUpdate(
         model_id=None,
