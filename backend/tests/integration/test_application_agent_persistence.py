@@ -12,44 +12,44 @@ OTHER_TENANT = UUID("22222222-2222-2222-2222-222222222222")
 
 
 def _application(tenant=TENANT, slug="test-app", **overrides):
-    fields = dict(
-        id=uuid4(),
-        tenant_id=tenant,
-        name="Test App",
-        slug=slug,
-        status="ACTIVE",
-        source="manual",
-    )
+    fields = {
+        "id": uuid4(),
+        "tenant_id": tenant,
+        "name": "Test App",
+        "slug": slug,
+        "status": "ACTIVE",
+        "source": "manual",
+    }
     fields.update(overrides)
     return Application(**fields)
 
 
 def _agent(application_id, tenant=TENANT, slug="test-agent", **overrides):
-    fields = dict(
-        id=uuid4(),
-        tenant_id=tenant,
-        application_id=application_id,
-        name="Test Agent",
-        slug=slug,
-        status="ACTIVE",
-        source="manual",
-        framework="langgraph",
-    )
+    fields = {
+        "id": uuid4(),
+        "tenant_id": tenant,
+        "application_id": application_id,
+        "name": "Test Agent",
+        "slug": slug,
+        "status": "ACTIVE",
+        "source": "manual",
+        "framework": "langgraph",
+    }
     fields.update(overrides)
     return Agent(**fields)
 
 
 def _association(agent_id, model_id, tenant=TENANT, **overrides):
-    fields = dict(
-        id=uuid4(),
-        tenant_id=tenant,
-        agent_id=agent_id,
-        model_id=model_id,
-        role="PRIMARY",
-        selection_priority=1,
-        status="ACTIVE",
-        source="manual",
-    )
+    fields = {
+        "id": uuid4(),
+        "tenant_id": tenant,
+        "agent_id": agent_id,
+        "model_id": model_id,
+        "role": "PRIMARY",
+        "selection_priority": 1,
+        "status": "ACTIVE",
+        "source": "manual",
+    }
     fields.update(overrides)
     return AgentModelAssociation(**fields)
 
