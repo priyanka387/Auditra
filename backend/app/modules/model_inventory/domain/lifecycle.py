@@ -76,3 +76,20 @@ def can_deployment_transition(current: str, target: str) -> bool:
     if current == target:
         return False
     return target in DEPLOYMENT_ALLOWED_TRANSITIONS[current]
+
+
+EntityStatus = Literal["ACTIVE", "INACTIVE", "ARCHIVED"]
+
+STATUS_ALLOWED_TRANSITIONS: dict[str, set[str]] = {
+    "ACTIVE": {"INACTIVE", "ARCHIVED"},
+    "INACTIVE": {"ACTIVE", "ARCHIVED"},
+    "ARCHIVED": set(),
+}
+
+
+def can_status_transition(current: str, target: str) -> bool:
+    if current not in STATUS_ALLOWED_TRANSITIONS or target not in STATUS_ALLOWED_TRANSITIONS:
+        return False
+    if current == target:
+        return False
+    return target in STATUS_ALLOWED_TRANSITIONS[current]

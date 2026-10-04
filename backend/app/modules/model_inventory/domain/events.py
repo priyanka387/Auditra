@@ -55,7 +55,54 @@ class DeploymentEndpointEvent:
     request_id: str | None
 
 
-Event = ModelEvent | ModelVersionEvent | DeploymentEvent | DeploymentEndpointEvent
+@dataclass(frozen=True)
+class ApplicationEvent:
+    event_id: str
+    event_type: str
+    tenant_id: UUID
+    application_id: UUID
+    occurred_at: datetime
+    actor: str | None
+    change_summary: list[str]
+    request_id: str | None
+
+
+@dataclass(frozen=True)
+class AgentEvent:
+    event_id: str
+    event_type: str
+    tenant_id: UUID
+    application_id: UUID
+    agent_id: UUID
+    occurred_at: datetime
+    actor: str | None
+    change_summary: list[str]
+    request_id: str | None
+
+
+@dataclass(frozen=True)
+class AgentModelAssociationEvent:
+    event_id: str
+    event_type: str
+    tenant_id: UUID
+    agent_id: UUID
+    model_id: UUID
+    association_id: UUID
+    occurred_at: datetime
+    actor: str | None
+    change_summary: list[str]
+    request_id: str | None
+
+
+Event = (
+    ModelEvent
+    | ModelVersionEvent
+    | DeploymentEvent
+    | DeploymentEndpointEvent
+    | ApplicationEvent
+    | AgentEvent
+    | AgentModelAssociationEvent
+)
 
 _handlers: list[Callable[[Event], None]] = []
 

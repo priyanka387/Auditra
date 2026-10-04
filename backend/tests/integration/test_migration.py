@@ -62,3 +62,43 @@ def test_model_deployment_migration_downgrade_and_upgrade(database):
         )
     finally:
         engine.dispose()
+
+
+def test_application_agent_association_migration_downgrade_and_upgrade(database):
+    cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    engine = sa.create_engine(settings.database_url, poolclass=sa.pool.NullPool)
+    try:
+        insp = sa.inspect(engine)
+        for table in ("applications", "agents", "agent_model_associations"):
+            assert insp.has_table(table)
+        indexes = {i["name"]: i for i in insp.get_indexes("agent_model_associations")}
+        for name in (
+            "uq_agent_model_associations_agent_role_priority",
+            "uq_agent_model_associations_agent_model_role",
+        ):
+            assert name in indexes and indexes[name]["unique"] is True
+        agent_fks = insp.get_foreign_keys("agents")
+        assert any(
+            fk["referred_table"] == "applications" and fk["options"].get("ondelete") == "RESTRICT"
+            for fk in agent_fks
+        )
+        association_fks = insp.get_foreign_keys("agent_model_associations")
+        assert any(
+            fk["referred_table"] == "agents" and fk["options"].get("ondelete") == "RESTRICT"
+            for fk in association_fks
+        )
+        try:
+            command.downgrade(cfg, "0003")
+            insp = sa.inspect(engine)
+            for table in ("applications", "agents", "agent_model_associations"):
+                assert not insp.has_table(table)
+            assert insp.has_table("model_deployments")
+        finally:
+            command.upgrade(cfg, "head")
+        insp = sa.inspect(engine)
+        for table in ("applications", "agents", "agent_model_associations"):
+            assert insp.has_table(table)
+        indexes = {i["name"]: i for i in insp.get_indexes("agent_model_associations")}
+        assert indexes["uq_agent_model_associations_agent_role_priority"]["unique"] is True
+    finally:
+        engine.dispose()

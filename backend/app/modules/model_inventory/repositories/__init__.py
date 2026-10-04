@@ -1,3 +1,12 @@
+from app.modules.model_inventory.repositories.agent_model_association_repository import (
+    AssociationFilters,
+)
+from app.modules.model_inventory.repositories.agent_repository import (
+    AgentFilters,
+)
+from app.modules.model_inventory.repositories.application_repository import (
+    ApplicationFilters,
+)
 from app.modules.model_inventory.repositories.deployment_endpoint_repository import (
     create_endpoint as create_deployment_endpoint,
 )
@@ -36,6 +45,9 @@ from app.modules.model_inventory.repositories.model_version_repository import (
 
 __all__ = [
     "ALLOWED_SORT_FIELDS",
+    "AgentFilters",
+    "ApplicationFilters",
+    "AssociationFilters",
     "DeploymentFilters",
     "ModelFilters",
     "ModelVersionFilters",

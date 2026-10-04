@@ -13,7 +13,7 @@ Specs: `docs/features/model-inventory/spec.md`, `docs/features/model-inventory/v
   [x] Model Registration
   [x] Model Versioning
   [x] Model Deployment
-  [ ] Agent Association
+  [x] Agent Association
   [ ] Model Usage
   [ ] Model Discovery
 ```
