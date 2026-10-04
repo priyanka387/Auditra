@@ -509,7 +509,6 @@ class AgentModelAssociationListResponse(BaseModel):
 class ModelAgentLinkResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: UUID
     association_id: UUID
     agent_id: UUID
     agent_name: str
