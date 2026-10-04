@@ -15,7 +15,7 @@ from alembic import command
 from app.core.config import settings
 from app.core.db import SessionLocal
 from app.main import app
-from app.modules.model_inventory.models import Model, ModelProvider, ModelType
+from app.modules.model_inventory.models import Model, ModelProvider, ModelType, ModelVersion
 from app.modules.model_inventory.services import ModelService
 from app.seed import seed_reference_data
 
@@ -52,7 +52,8 @@ def db(database):
         session.rollback()
         session.execute(
             sa.text(
-                "TRUNCATE model_versions, model_tag_links, model_tags, models, model_types, "
+                "TRUNCATE model_deployments, deployment_endpoints, model_versions, "
+                "model_tag_links, model_tags, models, model_types, "
                 "model_providers RESTART IDENTITY CASCADE"
             )
         )
@@ -82,6 +83,23 @@ def parent_model(db):
     db.add(model)
     db.commit()
     return model
+
+
+@pytest.fixture
+def parent_version(db, parent_model):
+    version = ModelVersion(
+        tenant_id=settings.default_tenant_id,
+        model_id=parent_model.id,
+        identity_type="release",
+        version_label="v1",
+        native_version_id="rel-1",
+        canonical_version_key="release:rel-1",
+        lifecycle_state="DRAFT",
+        source_type="manual",
+    )
+    db.add(version)
+    db.commit()
+    return version
 
 
 @pytest.fixture
