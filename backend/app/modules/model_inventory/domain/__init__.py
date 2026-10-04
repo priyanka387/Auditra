@@ -1,4 +1,6 @@
 from app.modules.model_inventory.domain.events import (
+    DeploymentEndpointEvent,
+    DeploymentEvent,
     Event,
     ModelEvent,
     ModelVersionEvent,
@@ -13,21 +15,30 @@ from app.modules.model_inventory.domain.identity import (
 )
 from app.modules.model_inventory.domain.lifecycle import (
     ALLOWED_TRANSITIONS,
+    DEPLOYABLE_VERSION_STATES,
+    DEPLOYMENT_ALLOWED_TRANSITIONS,
     INITIAL_STATES,
     VERSION_ALLOWED_TRANSITIONS,
     VERSION_INITIAL_STATE,
+    DeploymentStatus,
     LifecycleState,
     VersionLifecycleState,
+    can_deployment_transition,
     can_transition,
     can_version_transition,
 )
 
 __all__ = [
     "ALLOWED_TRANSITIONS",
+    "DEPLOYABLE_VERSION_STATES",
+    "DEPLOYMENT_ALLOWED_TRANSITIONS",
     "INITIAL_STATES",
     "VERSION_ALLOWED_TRANSITIONS",
     "VERSION_IDENTITY_TYPES",
     "VERSION_INITIAL_STATE",
+    "DeploymentEndpointEvent",
+    "DeploymentEvent",
+    "DeploymentStatus",
     "Event",
     "LifecycleState",
     "ModelEvent",
@@ -35,6 +46,7 @@ __all__ = [
     "VersionLifecycleState",
     "build_canonical_key",
     "build_canonical_version_key",
+    "can_deployment_transition",
     "can_transition",
     "can_version_transition",
     "dispatch_event",
