@@ -269,13 +269,21 @@ def test_openapi_contract(client):
     assert {
         "/api/v1/models",
         "/api/v1/models/{model_id}",
+        "/api/v1/models/{model_id}/versions",
+        "/api/v1/models/{model_id}/versions/{version_id}",
+        "/api/v1/models/{model_id}/versions/{version_id}/lifecycle",
         "/api/v1/model-providers",
         "/api/v1/model-types",
         "/health",
     } <= set(paths)
     assert {"post", "get"} <= set(paths["/api/v1/models"])
     assert {"get", "patch", "delete"} <= set(paths["/api/v1/models/{model_id}"])
-    assert sum(len(methods) for methods in paths.values()) == 8
+    assert {"post", "get"} <= set(paths["/api/v1/models/{model_id}/versions"])
+    assert {"get", "patch", "delete"} <= set(
+        paths["/api/v1/models/{model_id}/versions/{version_id}"]
+    )
+    assert {"post"} <= set(paths["/api/v1/models/{model_id}/versions/{version_id}/lifecycle"])
+    assert sum(len(methods) for methods in paths.values()) == 14
 
 
 def test_error_body_has_no_traceback(client, monkeypatch):
