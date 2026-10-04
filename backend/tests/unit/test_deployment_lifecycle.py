@@ -5,8 +5,8 @@ from uuid import uuid4
 import pytest
 
 from app.modules.model_inventory.domain import (
-    DEPLOYMENT_ALLOWED_TRANSITIONS,
     DEPLOYABLE_VERSION_STATES,
+    DEPLOYMENT_ALLOWED_TRANSITIONS,
     DeploymentEndpointEvent,
     DeploymentEvent,
     Event,
