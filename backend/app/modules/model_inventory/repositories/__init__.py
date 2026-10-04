@@ -1,3 +1,6 @@
+from app.modules.model_inventory.repositories.agent_repository import (
+    AgentFilters,
+)
 from app.modules.model_inventory.repositories.application_repository import (
     ApplicationFilters,
 )
@@ -39,6 +42,7 @@ from app.modules.model_inventory.repositories.model_version_repository import (
 
 __all__ = [
     "ALLOWED_SORT_FIELDS",
+    "AgentFilters",
     "ApplicationFilters",
     "DeploymentFilters",
     "ModelFilters",

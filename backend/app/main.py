@@ -11,7 +11,7 @@ from app.core.errors import (
     unhandled_error_handler,
     validation_error_handler,
 )
-from app.modules.model_inventory.api import application_router, deployment_router
+from app.modules.model_inventory.api import agent_router, application_router, deployment_router
 from app.modules.model_inventory.api import router as model_inventory_router
 from app.modules.model_inventory.domain.errors import DomainError
 
@@ -86,6 +86,7 @@ def create_app() -> FastAPI:
 
     app.include_router(model_inventory_router)
     app.include_router(application_router)
+    app.include_router(agent_router)
     app.include_router(deployment_router)
     return app
 

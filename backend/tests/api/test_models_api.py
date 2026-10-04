@@ -283,7 +283,7 @@ def test_openapi_contract(client):
         paths["/api/v1/models/{model_id}/versions/{version_id}"]
     )
     assert {"post"} <= set(paths["/api/v1/models/{model_id}/versions/{version_id}/lifecycle"])
-    assert sum(len(methods) for methods in paths.values()) == 30
+    assert sum(len(methods) for methods in paths.values()) == 36
 
     schemas = app.openapi()["components"]["schemas"]
     assert {"ModelVersionCreate", "ModelVersionResponse"} <= set(schemas)
