@@ -29,7 +29,33 @@ class ModelVersionEvent:
     request_id: str | None
 
 
-Event = ModelEvent | ModelVersionEvent
+@dataclass(frozen=True)
+class DeploymentEvent:
+    event_id: str
+    event_type: str
+    tenant_id: UUID
+    deployment_id: UUID
+    model_version_id: UUID
+    occurred_at: datetime
+    actor: str | None
+    change_summary: list[str]
+    request_id: str | None
+
+
+@dataclass(frozen=True)
+class DeploymentEndpointEvent:
+    event_id: str
+    event_type: str
+    tenant_id: UUID
+    deployment_id: UUID
+    endpoint_id: UUID
+    occurred_at: datetime
+    actor: str | None
+    change_summary: list[str]
+    request_id: str | None
+
+
+Event = ModelEvent | ModelVersionEvent | DeploymentEvent | DeploymentEndpointEvent
 
 _handlers: list[Callable[[Event], None]] = []
 

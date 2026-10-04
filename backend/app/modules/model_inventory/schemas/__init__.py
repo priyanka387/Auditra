@@ -1,3 +1,28 @@
+from app.modules.model_inventory.schemas.deployment import (
+    DEPLOYMENT_ENVIRONMENTS,
+    DEPLOYMENT_KINDS,
+    DEPLOYMENT_SOURCES,
+    DEPLOYMENT_STATUS_SOURCES,
+    DeploymentCreate,
+    DeploymentListResponse,
+    DeploymentResponse,
+    DeploymentTransitionRequest,
+    DeploymentUpdate,
+)
+from app.modules.model_inventory.schemas.deployment_endpoint import (
+    AUTH_TYPES,
+    ENDPOINT_PROTOCOLS,
+    ENDPOINT_STATUSES,
+    ENDPOINT_TYPES,
+    HEALTH_STATUSES,
+    MAX_ENDPOINT_URL_LENGTH,
+    DeploymentEndpointCreate,
+    DeploymentEndpointListResponse,
+    DeploymentEndpointResponse,
+    DeploymentEndpointUpdate,
+    validate_auth_reference,
+    validate_endpoint_url,
+)
 from app.modules.model_inventory.schemas.model import (
     ModelCreate,
     ModelListResponse,
@@ -19,7 +44,26 @@ from app.modules.model_inventory.schemas.model_version import (
 )
 
 __all__ = [
+    "AUTH_TYPES",
+    "DEPLOYMENT_ENVIRONMENTS",
+    "DEPLOYMENT_KINDS",
+    "DEPLOYMENT_SOURCES",
+    "DEPLOYMENT_STATUS_SOURCES",
+    "ENDPOINT_PROTOCOLS",
+    "ENDPOINT_STATUSES",
+    "ENDPOINT_TYPES",
+    "HEALTH_STATUSES",
+    "MAX_ENDPOINT_URL_LENGTH",
     "VERSION_SOURCE_TYPES",
+    "DeploymentCreate",
+    "DeploymentEndpointCreate",
+    "DeploymentEndpointListResponse",
+    "DeploymentEndpointResponse",
+    "DeploymentEndpointUpdate",
+    "DeploymentListResponse",
+    "DeploymentResponse",
+    "DeploymentTransitionRequest",
+    "DeploymentUpdate",
     "ModelCreate",
     "ModelListResponse",
     "ModelResponse",
@@ -33,5 +77,7 @@ __all__ = [
     "ProviderSummary",
     "TagResponse",
     "parse_tags",
+    "validate_auth_reference",
+    "validate_endpoint_url",
     "validate_metadata",
 ]
