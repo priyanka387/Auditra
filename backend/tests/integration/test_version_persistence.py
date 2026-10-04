@@ -104,3 +104,19 @@ def test_required_indexes_exist(db, parent_model):
     } <= idx
     cons = {c["name"] for c in sa.inspect(db.get_bind()).get_unique_constraints("model_versions")}
     assert "uq_model_versions_tenant_model_canonical_key" in cons
+
+
+def test_parent_model_delete_blocked_by_versions(db, parent_model):
+    version = _mk_version(db, parent_model, key="native:keep-history")
+    version_id = version.id
+    db.commit()
+
+    db.delete(parent_model)
+    with pytest.raises(IntegrityError) as exc:
+        db.commit()
+    assert "model_versions" in str(exc.value.orig)
+    db.rollback()
+
+    kept = db.get(ModelVersion, version_id)
+    assert kept is not None
+    assert db.get(type(parent_model), parent_model.id) is not None

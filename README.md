@@ -1,7 +1,9 @@
 # Auditra
 
 AI governance backend. **Model Registration V1** — register, update, query, and archive
-models under a stable canonical identity. Spec: `docs/features/model-inventory/spec.md`.
+models under a stable canonical identity. **Model Versioning V1** — version those models
+with immutable identity, lifecycle transitions, and optimistic concurrency. Specs:
+`docs/features/model-inventory/spec.md`, `docs/features/model-inventory/versioning-spec.md`.
 
 ## Prerequisites
 
@@ -36,6 +38,8 @@ uv run pytest -v
 ```
 
 Endpoints: `/health`, `/api/v1/models`, `/api/v1/models/{model_id}`,
+`/api/v1/models/{model_id}/versions`, `/api/v1/models/{model_id}/versions/{version_id}`,
+`/api/v1/models/{model_id}/versions/{version_id}/lifecycle`,
 `/api/v1/model-providers`, `/api/v1/model-types` (OpenAPI at `/docs`).
 
 Lint: `uv run ruff check .` and `uv run ruff format .` (from `backend/`).
