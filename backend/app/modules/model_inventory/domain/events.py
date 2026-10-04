@@ -16,14 +16,29 @@ class ModelEvent:
     request_id: str | None
 
 
-_handlers: list[Callable[[ModelEvent], None]] = []
+@dataclass(frozen=True)
+class ModelVersionEvent:
+    event_id: str
+    event_type: str
+    tenant_id: UUID
+    model_id: UUID
+    model_version_id: UUID
+    occurred_at: datetime
+    actor: str | None
+    change_summary: list[str]
+    request_id: str | None
 
 
-def register_handler(fn: Callable[[ModelEvent], None]) -> None:
+Event = ModelEvent | ModelVersionEvent
+
+_handlers: list[Callable[[Event], None]] = []
+
+
+def register_handler(fn: Callable[[Event], None]) -> None:
     _handlers.append(fn)
 
 
-def dispatch_event(event: ModelEvent) -> None:
+def dispatch_event(event: Event) -> None:
     for fn in _handlers:
         fn(event)
 

@@ -45,6 +45,22 @@ def test_secret_metadata_key_rejected():
         )
 
 
+def test_nested_secret_metadata_rejected():
+    with pytest.raises(ValueError):
+        validate_metadata({"config": {"api_key": "x"}})
+    with pytest.raises(ValueError):
+        validate_metadata({"servers": [{"secret_token": "x"}]})
+    with pytest.raises(ValueError):
+        ModelCreate(
+            provider_slug="openai",
+            model_type_slug="llm",
+            name="Customer Support LLM",
+            native_model_id="gpt-4o",
+            metadata={"config": {"api_key": "x"}},
+        )
+    assert validate_metadata({"config": {"region": "eu"}}) is None
+
+
 def test_oversized_metadata_rejected():
     padded = {"pad": "x" * 10_001}
     with pytest.raises(ValueError):

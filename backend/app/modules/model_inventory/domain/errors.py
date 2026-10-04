@@ -55,3 +55,33 @@ class ModelArchivedError(DomainError):
 class InvalidSortFieldError(DomainError):
     code = "INVALID_SORT_FIELD"
     http_status = 400
+
+
+class ModelVersionNotFoundError(DomainError):
+    code = "MODEL_VERSION_NOT_FOUND"
+    http_status = 404
+
+
+class DuplicateModelVersionError(DomainError):
+    code = "MODEL_VERSION_ALREADY_EXISTS"
+    http_status = 409
+
+
+class VersionIdentityImmutableError(DomainError):
+    code = "MODEL_VERSION_IDENTITY_IMMUTABLE"
+    http_status = 409
+
+
+class InvalidVersionTransitionError(DomainError):
+    code = "INVALID_MODEL_VERSION_LIFECYCLE_TRANSITION"
+    http_status = 409
+
+
+class ModelVersionArchivedError(DomainError):
+    code = "MODEL_VERSION_ALREADY_ARCHIVED"
+    http_status = 409
+
+
+class VersionConcurrencyConflictError(DomainError):
+    code = "VERSION_CONCURRENCY_CONFLICT"
+    http_status = 409
