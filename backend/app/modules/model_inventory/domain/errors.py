@@ -150,3 +150,63 @@ class InvalidEndpointUrlError(DomainError):
 class InvalidAuthReferenceError(DomainError):
     code = "INVALID_AUTH_REFERENCE"
     http_status = 409
+
+
+class ApplicationNotFoundError(DomainError):
+    code = "APPLICATION_NOT_FOUND"
+    http_status = 404
+
+
+class DuplicateApplicationError(DomainError):
+    code = "APPLICATION_ALREADY_EXISTS"
+    http_status = 409
+
+
+class ApplicationArchivedError(DomainError):
+    code = "APPLICATION_ARCHIVED"
+    http_status = 409
+
+
+class AgentNotFoundError(DomainError):
+    code = "AGENT_NOT_FOUND"
+    http_status = 404
+
+
+class DuplicateAgentError(DomainError):
+    code = "AGENT_ALREADY_EXISTS"
+    http_status = 409
+
+
+class AgentArchivedError(DomainError):
+    code = "AGENT_ARCHIVED"
+    http_status = 409
+
+
+class AgentNotActiveError(DomainError):
+    code = "AGENT_NOT_ACTIVE"
+    http_status = 409
+
+
+class AssociationNotFoundError(DomainError):
+    code = "ASSOCIATION_NOT_FOUND"
+    http_status = 404
+
+
+class DuplicateAssociationError(DomainError):
+    code = "ASSOCIATION_DUPLICATE"
+    http_status = 409
+
+
+class ModelNotAssociableError(DomainError):
+    code = "MODEL_NOT_ASSOCIABLE"
+    http_status = 409
+
+
+class ModelVersionMismatchError(DomainError):
+    code = "MODEL_VERSION_BELONGS_TO_DIFFERENT_MODEL"
+    http_status = 409
+
+
+class InvalidStatusTransitionError(DomainError):
+    code = "INVALID_STATUS_TRANSITION"
+    http_status = 409
