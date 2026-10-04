@@ -12,7 +12,6 @@ from sqlalchemy import (
     Index,
     String,
     Text,
-    UniqueConstraint,
     desc,
     func,
     text,
@@ -26,14 +25,6 @@ from app.core.db import Base
 class ModelDeployment(Base):
     __tablename__ = "model_deployments"
     __table_args__ = (
-        UniqueConstraint(
-            "tenant_id",
-            "model_version_id",
-            "environment",
-            "target_name",
-            "namespace",
-            name="uq_model_deployments_tenant_version_env_target_ns",
-        ),
         CheckConstraint(
             "environment IN ('development', 'staging', 'production')",
             name="ck_model_deployments_environment",
@@ -68,6 +59,21 @@ class ModelDeployment(Base):
         Index("ix_model_deployments_tenant_target_type", "tenant_id", "target_type"),
         Index("ix_model_deployments_tenant_last_seen_at", "tenant_id", "last_seen_at"),
         Index("ix_model_deployments_tenant_created_at", "tenant_id", desc("created_at")),
+        # ponytail: uniqueness excludes archived rows so an archived
+        # deployment never blocks re-creating the same identity;
+        # NULLS NOT DISTINCT because Postgres otherwise treats a NULL
+        # target_name/namespace as never-equal (constraint would be inert)
+        Index(
+            "uq_model_deployments_tenant_version_env_target_ns",
+            "tenant_id",
+            "model_version_id",
+            "environment",
+            "target_name",
+            "namespace",
+            unique=True,
+            postgresql_nulls_not_distinct=True,
+            postgresql_where=text("archived_at IS NULL"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)

@@ -98,14 +98,14 @@ def upgrade() -> None:
             ondelete="RESTRICT",
         ),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "tenant_id",
-            "model_version_id",
-            "environment",
-            "target_name",
-            "namespace",
-            name="uq_model_deployments_tenant_version_env_target_ns",
-        ),
+    )
+    op.create_index(
+        "uq_model_deployments_tenant_version_env_target_ns",
+        "model_deployments",
+        ["tenant_id", "model_version_id", "environment", "target_name", "namespace"],
+        unique=True,
+        postgresql_nulls_not_distinct=True,
+        postgresql_where=sa.text("archived_at IS NULL"),
     )
     op.create_index(
         "ix_model_deployments_tenant_created_at",
@@ -232,4 +232,5 @@ def downgrade() -> None:
     op.drop_index("ix_model_deployments_tenant_last_seen_at", table_name="model_deployments")
     op.drop_index("ix_model_deployments_tenant_environment_status", table_name="model_deployments")
     op.drop_index("ix_model_deployments_tenant_created_at", table_name="model_deployments")
+    op.execute("DROP INDEX IF EXISTS uq_model_deployments_tenant_version_env_target_ns")
     op.drop_table("model_deployments")
