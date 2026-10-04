@@ -15,6 +15,7 @@ from alembic import command
 from app.core.config import settings
 from app.core.db import SessionLocal
 from app.main import app
+from app.modules.model_inventory.models import Model, ModelProvider, ModelType
 from app.modules.model_inventory.services import ModelService
 from app.seed import seed_reference_data
 
@@ -51,7 +52,7 @@ def db(database):
         session.rollback()
         session.execute(
             sa.text(
-                "TRUNCATE model_tag_links, model_tags, models, model_types, "
+                "TRUNCATE model_versions, model_tag_links, model_tags, models, model_types, "
                 "model_providers RESTART IDENTITY CASCADE"
             )
         )
@@ -62,6 +63,25 @@ def db(database):
 @pytest.fixture
 def service(db):
     return ModelService(db, tenant_id=settings.default_tenant_id)
+
+
+@pytest.fixture
+def parent_model(db):
+    seed_reference_data(db)
+    provider = db.scalar(sa.select(ModelProvider).where(ModelProvider.slug == "openai"))
+    model_type = db.scalar(sa.select(ModelType).where(ModelType.slug == "llm"))
+    model = Model(
+        tenant_id=settings.default_tenant_id,
+        provider_id=provider.id,
+        model_type_id=model_type.id,
+        name="Versioned Model",
+        native_model_id="versioned-1",
+        canonical_key="openai|versioned-1",
+        source_type="MANUAL",
+    )
+    db.add(model)
+    db.commit()
+    return model
 
 
 @pytest.fixture
