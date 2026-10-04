@@ -52,7 +52,8 @@ def db(database):
         session.rollback()
         session.execute(
             sa.text(
-                "TRUNCATE model_deployments, deployment_endpoints, model_versions, "
+                "TRUNCATE agent_model_associations, agents, applications, "
+                "model_deployments, deployment_endpoints, model_versions, "
                 "model_tag_links, model_tags, models, model_types, "
                 "model_providers RESTART IDENTITY CASCADE"
             )
