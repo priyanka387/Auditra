@@ -205,9 +205,15 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("ix_deployment_endpoints_deployment_id", "deployment_endpoints", ["deployment_id"])
-    op.create_index("ix_deployment_endpoints_endpoint_type", "deployment_endpoints", ["endpoint_type"])
-    op.create_index("ix_deployment_endpoints_tenant_status", "deployment_endpoints", ["tenant_id", "status"])
+    op.create_index(
+        "ix_deployment_endpoints_deployment_id", "deployment_endpoints", ["deployment_id"]
+    )
+    op.create_index(
+        "ix_deployment_endpoints_endpoint_type", "deployment_endpoints", ["endpoint_type"]
+    )
+    op.create_index(
+        "ix_deployment_endpoints_tenant_status", "deployment_endpoints", ["tenant_id", "status"]
+    )
     op.create_index(
         "uq_deployment_endpoints_primary_inference",
         "deployment_endpoints",

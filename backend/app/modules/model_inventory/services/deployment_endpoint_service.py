@@ -126,9 +126,7 @@ class DeploymentEndpointService:
                 endpoint.auth_reference = new_reference
 
         if payload.is_primary is True and endpoint.endpoint_type != "inference":
-            raise InvalidPrimaryEndpointError(
-                "only inference endpoints can be marked as primary"
-            )
+            raise InvalidPrimaryEndpointError("only inference endpoints can be marked as primary")
         if payload.is_primary is True:
             self._assert_primary_available(endpoint.deployment_id, exclude_id=endpoint.id)
 
@@ -144,9 +142,7 @@ class DeploymentEndpointService:
         if changed and self.actor is not None:
             endpoint.updated_by = self.actor
         commit(self.db)
-        self._dispatch(
-            "deployment_endpoint.updated", endpoint.deployment_id, endpoint.id, changed
-        )
+        self._dispatch("deployment_endpoint.updated", endpoint.deployment_id, endpoint.id, changed)
         return endpoint
 
     def archive_endpoint(self, endpoint_id: UUID) -> None:

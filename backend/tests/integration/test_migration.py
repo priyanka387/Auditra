@@ -57,8 +57,7 @@ def test_model_deployment_migration_downgrade_and_upgrade(database):
         assert primary is not None and primary["unique"] is True
         fks = insp.get_foreign_keys("model_deployments")
         assert any(
-            fk["referred_table"] == "model_versions"
-            and fk["options"].get("ondelete") == "RESTRICT"
+            fk["referred_table"] == "model_versions" and fk["options"].get("ondelete") == "RESTRICT"
             for fk in fks
         )
     finally:

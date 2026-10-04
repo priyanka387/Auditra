@@ -107,9 +107,7 @@ def test_null_target_name_still_enforced_and_distinguished_by_target(db, parent_
     with pytest.raises(DuplicateDeploymentError):
         create_deployment(
             db,
-            **_deployment_fields(
-                parent_version, id=uuid.uuid4(), target_name=None, namespace=None
-            ),
+            **_deployment_fields(parent_version, id=uuid.uuid4(), target_name=None, namespace=None),
         )
         commit_deployment(db)
 
@@ -148,9 +146,7 @@ def test_partial_unique_primary_endpoint(db, parent_version):
     create_endpoint(db, **_endpoint_fields(deployment))
     commit_endpoint(db)
 
-    create_endpoint(
-        db, **_endpoint_fields(deployment, id=uuid.uuid4(), name="primary-2")
-    )
+    create_endpoint(db, **_endpoint_fields(deployment, id=uuid.uuid4(), name="primary-2"))
     with pytest.raises(DuplicatePrimaryEndpointError):
         commit_endpoint(db)
 
@@ -166,9 +162,7 @@ def test_archived_primary_frees_slot(db, parent_version):
     first.archived_at = datetime.now(UTC)
     commit_endpoint(db)
 
-    second = create_endpoint(
-        db, **_endpoint_fields(deployment, id=uuid.uuid4(), name="primary-2")
-    )
+    second = create_endpoint(db, **_endpoint_fields(deployment, id=uuid.uuid4(), name="primary-2"))
     commit_endpoint(db)
 
     active = list_endpoints(db, settings.default_tenant_id, deployment.id)
@@ -184,8 +178,12 @@ def test_query_filters_search_and_archive_exclusion(db, parent_version):
     production = create_deployment(
         db,
         **_deployment_fields(
-            version, name="prod-us-east", environment="production", status="active",
-            target_name="prod-cluster", region="us-east-1",
+            version,
+            name="prod-us-east",
+            environment="production",
+            status="active",
+            target_name="prod-cluster",
+            region="us-east-1",
         ),
     )
     staging = create_deployment(
@@ -204,9 +202,7 @@ def test_query_filters_search_and_archive_exclusion(db, parent_version):
     )
     archived = create_deployment(
         db,
-        **_deployment_fields(
-            version, id=uuid.uuid4(), name="old-edge", target_name="edge-01"
-        ),
+        **_deployment_fields(version, id=uuid.uuid4(), name="old-edge", target_name="edge-01"),
     )
     commit_deployment(db)
 
@@ -306,9 +302,7 @@ def test_cross_tenant_isolation(db, parent_version):
     assert total == 0
     assert all(isinstance(item, ModelDeployment) for item in items)
 
-    deployment = create_deployment(
-        db, **_deployment_fields(parent_version, id=uuid.uuid4())
-    )
+    deployment = create_deployment(db, **_deployment_fields(parent_version, id=uuid.uuid4()))
     commit_deployment(db)
     foreign_endpoint = create_endpoint(
         db,

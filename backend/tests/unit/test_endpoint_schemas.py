@@ -130,4 +130,3 @@ def test_update_only_accepts_mutable_fields():
     for immutable in ("deployment_id", "endpoint_type", "id"):
         with pytest.raises(ValidationError):
             DeploymentEndpointUpdate.model_validate({immutable: "x"})
-

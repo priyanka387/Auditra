@@ -120,15 +120,11 @@ def test_event_dataclasses_are_frozen():
         "change_summary": [],
         "request_id": None,
     }
-    deployment_event = DeploymentEvent(
-        deployment_id=uuid4(), model_version_id=uuid4(), **common
-    )
+    deployment_event = DeploymentEvent(deployment_id=uuid4(), model_version_id=uuid4(), **common)
     with pytest.raises(dataclasses.FrozenInstanceError):
         deployment_event.event_type = "mutated"
 
-    endpoint_event = DeploymentEndpointEvent(
-        deployment_id=uuid4(), endpoint_id=uuid4(), **common
-    )
+    endpoint_event = DeploymentEndpointEvent(deployment_id=uuid4(), endpoint_id=uuid4(), **common)
     with pytest.raises(dataclasses.FrozenInstanceError):
         endpoint_event.event_type = "mutated"
 

@@ -43,9 +43,7 @@ def validate_auth_reference(auth_type: str, auth_reference: str | None) -> None:
     if auth_reference is None:
         return
     if auth_type == "none":
-        raise InvalidAuthReferenceError(
-            "auth_reference must not be set when auth_type is 'none'"
-        )
+        raise InvalidAuthReferenceError("auth_reference must not be set when auth_type is 'none'")
     if "://" not in auth_reference:
         raise InvalidAuthReferenceError(
             "auth_reference must be a reference URI such as secret://..., never a raw secret"

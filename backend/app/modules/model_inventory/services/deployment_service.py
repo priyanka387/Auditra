@@ -140,9 +140,7 @@ class DeploymentService:
             include_archived,
         )
 
-    def update_deployment(
-        self, deployment_id: UUID, payload: DeploymentUpdate
-    ) -> ModelDeployment:
+    def update_deployment(self, deployment_id: UUID, payload: DeploymentUpdate) -> ModelDeployment:
         deployment = self._get_or_404(deployment_id)
         self._assert_not_archived(deployment)
 

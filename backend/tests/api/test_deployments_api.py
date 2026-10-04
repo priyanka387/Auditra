@@ -179,9 +179,7 @@ def test_list_filters_search_sort_pagination(client, db):
     archived = _create_deployment(
         client, version["id"], name="ddd-archived", target_name="archived-vm"
     )
-    client.post(
-        f"{API}/deployments/{archived['id']}/transition", json={"status": "deploying"}
-    )
+    client.post(f"{API}/deployments/{archived['id']}/transition", json={"status": "deploying"})
     assert client.delete(f"{API}/deployments/{archived['id']}").status_code == 204
 
     by_env = client.get(f"{API}/deployments", params={"environment": "production"}).json()
@@ -201,9 +199,7 @@ def test_list_filters_search_sort_pagination(client, db):
     by_runtime = client.get(f"{API}/deployments", params={"runtime": "triton"}).json()
     assert by_runtime["total"] == 1
 
-    by_version = client.get(
-        f"{API}/deployments", params={"model_version_id": version["id"]}
-    ).json()
+    by_version = client.get(f"{API}/deployments", params={"model_version_id": version["id"]}).json()
     assert by_version["total"] == 2
 
     by_model = client.get(f"{API}/deployments", params={"model_id": other_model}).json()
@@ -213,21 +209,15 @@ def test_list_filters_search_sort_pagination(client, db):
     assert search_cluster["total"] >= 1
     assert prod["id"] in [item["id"] for item in search_cluster["items"]]
 
-    search_namespace = client.get(
-        f"{API}/deployments", params={"search": "ai-staging"}
-    ).json()
+    search_namespace = client.get(f"{API}/deployments", params={"search": "ai-staging"}).json()
     assert search_namespace["total"] == 1 and search_namespace["items"][0]["id"] == staging["id"]
 
-    search_source_ref = client.get(
-        f"{API}/deployments", params={"search": "ticket-77"}
-    ).json()
+    search_source_ref = client.get(f"{API}/deployments", params={"search": "ticket-77"}).json()
     assert search_source_ref["total"] == 1
 
     archived_hidden = client.get(f"{API}/deployments").json()
     assert archived["id"] not in [item["id"] for item in archived_hidden["items"]]
-    archived_shown = client.get(
-        f"{API}/deployments", params={"include_archived": "true"}
-    ).json()
+    archived_shown = client.get(f"{API}/deployments", params={"include_archived": "true"}).json()
     assert archived["id"] in [item["id"] for item in archived_shown["items"]]
 
     ascending = client.get(
@@ -322,9 +312,7 @@ def test_get_patch_delete_workflow(client):
     assert patched_archived.status_code == 409
     assert _error(patched_archived)["code"] == "DEPLOYMENT_ALREADY_ARCHIVED"
 
-    transition_archived = client.post(
-        f"{path}/transition", json={"status": "deploying"}
-    )
+    transition_archived = client.post(f"{path}/transition", json={"status": "deploying"})
     assert transition_archived.status_code == 409
     assert _error(transition_archived)["code"] == "DEPLOYMENT_ALREADY_ARCHIVED"
 
@@ -376,9 +364,7 @@ def test_duplicate_primary_returns_409(client):
     model_id = _model(client)
     version = _version(client, model_id)
     deployment = _create_deployment(client, version["id"])
-    first = client.post(
-        f"{API}/deployments/{deployment['id']}/endpoints", json=_endpoint_payload()
-    )
+    first = client.post(f"{API}/deployments/{deployment['id']}/endpoints", json=_endpoint_payload())
     assert first.status_code == 201
 
     second = client.post(

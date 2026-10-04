@@ -139,6 +139,7 @@ def test_get_and_list(db, parent_version):
 def test_transition_happy_path_and_guards(db, parent_version):
     service = _service(db)
     deployment = service.create_deployment(parent_version.id, _payload())
+
     def transition(target, **kwargs):
         return service.transition_deployment(
             deployment.id, DeploymentTransitionRequest(status=target, **kwargs)
@@ -158,9 +159,7 @@ def test_transition_happy_path_and_guards(db, parent_version):
         transition("stopped")
 
     with pytest.raises(InvalidDeploymentTransitionError):
-        service.transition_deployment(
-            deployment.id, DeploymentTransitionRequest(status="active")
-        )
+        service.transition_deployment(deployment.id, DeploymentTransitionRequest(status="active"))
 
     stopping = transition("stopping")
     assert stopping.status == "stopping"
@@ -204,9 +203,7 @@ def test_archive_is_idempotent_and_sets_state(db, parent_version):
     assert service.get_deployment(deployment.id).archived_at == archived.archived_at
 
     with pytest.raises(DeploymentAlreadyArchivedError):
-        service.update_deployment(
-            deployment.id, DeploymentUpdate.model_validate({"name": "nope"})
-        )
+        service.update_deployment(deployment.id, DeploymentUpdate.model_validate({"name": "nope"}))
 
 
 def test_endpoint_crud_and_primary_rules(db, parent_version):
@@ -219,13 +216,16 @@ def test_endpoint_crud_and_primary_rules(db, parent_version):
     assert primary.status == "active"
 
     with pytest.raises(DuplicatePrimaryEndpointError):
-        service.create_endpoint(
-            deployment.id, _endpoint_payload(name="primary-2")
-        )
+        service.create_endpoint(deployment.id, _endpoint_payload(name="primary-2"))
 
     health = service.create_endpoint(
-        deployment.id, _endpoint_payload(name="health", is_primary=False,
-                                         endpoint_type="health", url="https://fraud.example.com/healthz")
+        deployment.id,
+        _endpoint_payload(
+            name="health",
+            is_primary=False,
+            endpoint_type="health",
+            url="https://fraud.example.com/healthz",
+        ),
     )
     assert health.endpoint_type == "health"
 
@@ -249,9 +249,7 @@ def test_endpoint_crud_and_primary_rules(db, parent_version):
     with_archived = service.list_endpoints(deployment.id, include_archived=True)
     assert len(with_archived) == 2
 
-    replacement = service.create_endpoint(
-        deployment.id, _endpoint_payload(name="primary-v2")
-    )
+    replacement = service.create_endpoint(deployment.id, _endpoint_payload(name="primary-v2"))
     assert replacement.is_primary is True
 
     with pytest.raises(DeploymentEndpointNotFoundError):
@@ -266,8 +264,12 @@ def test_endpoint_update_rules(db, parent_version):
     updated = service.update_endpoint(
         endpoint.id,
         DeploymentEndpointUpdate.model_validate(
-            {"name": "primary-renamed", "url": "https://fraud.example.com/v2/infer",
-             "health_status": "healthy", "last_health_check_at": "2026-10-05T12:00:00Z"}
+            {
+                "name": "primary-renamed",
+                "url": "https://fraud.example.com/v2/infer",
+                "health_status": "healthy",
+                "last_health_check_at": "2026-10-05T12:00:00Z",
+            }
         ),
     )
     assert updated.name == "primary-renamed"
@@ -277,21 +279,22 @@ def test_endpoint_update_rules(db, parent_version):
 
     with pytest.raises(InvalidEndpointUrlError):
         service.update_endpoint(
-            endpoint.id, DeploymentEndpointUpdate.model_validate({"url": "http://fraud.example.com/v2"})
+            endpoint.id,
+            DeploymentEndpointUpdate.model_validate({"url": "http://fraud.example.com/v2"}),
         )
 
     with pytest.raises(InvalidEndpointUrlError):
         service.create_endpoint(
             deployment.id,
-            _endpoint_payload(name="credentialed", is_primary=False,
-                              url="https://user:pass@fraud.example.com/v1"),
+            _endpoint_payload(
+                name="credentialed", is_primary=False, url="https://user:pass@fraud.example.com/v1"
+            ),
         )
 
     with pytest.raises(InvalidAuthReferenceError):
         service.create_endpoint(
             deployment.id,
-            _endpoint_payload(name="leaky", is_primary=False,
-                              auth_reference="sk-live-abc123"),
+            _endpoint_payload(name="leaky", is_primary=False, auth_reference="sk-live-abc123"),
         )
 
     service.archive_endpoint(endpoint.id)
@@ -373,5 +376,3 @@ def test_event_payload_shape(db, parent_version):
     assert endpoint_events[0].endpoint_id is not None
 
     assert callable(dispatch_event)
-
-

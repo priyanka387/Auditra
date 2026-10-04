@@ -156,9 +156,7 @@ def transition_deployment(
     return _deployment_response(_service(request, db).transition_deployment(deployment_id, payload))
 
 
-@deployment_router.delete(
-    "/deployments/{deployment_id}", status_code=204, response_class=Response
-)
+@deployment_router.delete("/deployments/{deployment_id}", status_code=204, response_class=Response)
 def archive_deployment(
     deployment_id: UUID,
     request: Request,
@@ -224,9 +222,7 @@ def update_endpoint(
     request: Request,
     db: Annotated[Session, Depends(get_db)],
 ) -> DeploymentEndpointResponse:
-    return _endpoint_response(
-        _endpoint_service(request, db).update_endpoint(endpoint_id, payload)
-    )
+    return _endpoint_response(_endpoint_service(request, db).update_endpoint(endpoint_id, payload))
 
 
 @deployment_router.delete(
