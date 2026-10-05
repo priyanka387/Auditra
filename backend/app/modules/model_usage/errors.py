@@ -34,3 +34,8 @@ class UsageContextMissingError(ModelUsageError):
 class ModelUsageNotFoundError(ModelUsageError):
     code = "MODEL_USAGE_EVENT_NOT_FOUND"
     http_status = 404
+
+
+class InvalidUsageQueryError(ModelUsageError):
+    code = "INVALID_USAGE_QUERY"
+    http_status = 400

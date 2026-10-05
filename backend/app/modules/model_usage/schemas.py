@@ -244,6 +244,21 @@ class UsageEventFilter(BaseModel):
     sort_by: Literal["started_at", "created_at", "duration_ms"] = "started_at"
     sort_order: Literal["asc", "desc"] = "desc"
 
+    @field_validator("started_from", "started_to")
+    @classmethod
+    def _require_timezone(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.tzinfo is None:
+            raise ValueError("timestamp must be timezone-aware")
+        return value
+
+
+class UsageEventListResponse(BaseModel):
+    items: list[UsageEventResponse]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+
 
 class UsageStatsQuery(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -257,6 +272,13 @@ class UsageStatsQuery(BaseModel):
     started_from: datetime
     started_to: datetime
     granularity: Literal["total", "hour", "day"] = "total"
+
+    @field_validator("started_from", "started_to")
+    @classmethod
+    def _require_timezone(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("timestamp must be timezone-aware")
+        return value
 
     @model_validator(mode="after")
     def _check_range(self) -> "UsageStatsQuery":

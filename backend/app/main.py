@@ -19,6 +19,7 @@ from app.modules.model_inventory.api import (
 )
 from app.modules.model_inventory.api import router as model_inventory_router
 from app.modules.model_inventory.domain.errors import DomainError
+from app.modules.model_usage.routes import router as model_usage_router
 
 logger = logging.getLogger("auditra.http")
 
@@ -94,6 +95,7 @@ def create_app() -> FastAPI:
     app.include_router(agent_router)
     app.include_router(agent_model_router)
     app.include_router(deployment_router)
+    app.include_router(model_usage_router)
     return app
 
 
