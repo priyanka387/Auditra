@@ -102,3 +102,41 @@ def test_application_agent_association_migration_downgrade_and_upgrade(database)
         assert indexes["uq_agent_model_associations_agent_role_priority"]["unique"] is True
     finally:
         engine.dispose()
+
+
+def test_model_usage_migration_downgrade_and_upgrade(database):
+    cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    engine = sa.create_engine(settings.database_url, poolclass=sa.pool.NullPool)
+    try:
+        insp = sa.inspect(engine)
+        assert insp.has_table("model_usage_events")
+        indexes = {i["name"]: i for i in insp.get_indexes("model_usage_events")}
+        for name in (
+            "ix_model_usage_events_tenant_started_at",
+            "ix_model_usage_events_tenant_model_started_at",
+            "ix_model_usage_events_tenant_status_started_at",
+            "ix_model_usage_events_event_id",
+        ):
+            assert name in indexes, name
+        assert indexes["ix_model_usage_events_event_id"]["unique"] is True
+        fks = {fk["referred_table"]: fk for fk in insp.get_foreign_keys("model_usage_events")}
+        assert set(fks) == {
+            "models",
+            "model_versions",
+            "model_deployments",
+            "applications",
+            "agents",
+        }
+        assert all(fk["options"].get("ondelete") == "RESTRICT" for fk in fks.values())
+        checks = {c["name"] for c in insp.get_check_constraints("model_usage_events")}
+        assert "ck_model_usage_events_status" in checks
+        assert "ck_model_usage_events_source" in checks
+        assert "ck_model_usage_events_tokens_non_negative" in checks
+        try:
+            command.downgrade(cfg, "0004")
+            assert not sa.inspect(engine).has_table("model_usage_events")
+        finally:
+            command.upgrade(cfg, "head")
+        assert sa.inspect(engine).has_table("model_usage_events")
+    finally:
+        engine.dispose()
