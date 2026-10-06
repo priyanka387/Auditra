@@ -6,7 +6,7 @@ import pytest
 from app.core.config import settings
 from app.modules.model_discovery import repository
 from app.modules.model_discovery.enums import DiscoverySourceType, DiscoveryStatus
-from app.modules.model_discovery.errors import DuplicateDiscoveryError, InvalidDiscoveryQueryError
+from app.modules.model_discovery.errors import (DiscoveryNotFoundError, DuplicateDiscoveryError, InvalidDiscoveryQueryError, InvalidDiscoveryTransitionError)
 from app.modules.model_discovery.schemas import DiscoveryCreate, DiscoveryFilter, DiscoveryResponse
 from app.modules.model_discovery.service import DiscoveryService
 
@@ -251,3 +251,104 @@ def test_service_list_returns_responses_and_passes_unknown_sort(db):
     with pytest.raises(InvalidDiscoveryQueryError):
         svc.list(DiscoveryFilter.model_construct(sort_by="bogus", page=1, page_size=25))
 
+
+
+def test_match_links_newly_registered_model(db, parent_model):
+    from app.modules.model_inventory.schemas.model import ModelCreate
+    from app.modules.model_inventory.services import ModelService
+
+    svc = DiscoveryService(db, settings.default_tenant_id)
+    observed, _ = svc.ingest(_payload(provider="openai", model_identifier="late-model-1"))
+    assert observed.status is DiscoveryStatus.UNRESOLVED
+
+    model = ModelService(db, settings.default_tenant_id).register_model(
+        ModelCreate(
+            provider_slug="openai",
+            model_type_slug="llm",
+            name="Late Model",
+            native_model_id="late-model-1",
+        )
+    )
+
+    response = svc.match(observed.id)
+    assert response.status is DiscoveryStatus.MATCHED
+    assert response.matched_model_id == model.id
+
+
+def test_ignore_from_unresolved_sets_ignored(db):
+    svc = DiscoveryService(db, settings.default_tenant_id)
+    observed, _ = svc.ingest(_payload())
+    response = svc.ignore(observed.id)
+    assert response.status is DiscoveryStatus.IGNORED
+    assert response.matched_model_id is None
+
+
+def test_match_on_ignored_rejected(db):
+    svc = DiscoveryService(db, settings.default_tenant_id)
+    observed, _ = svc.ingest(_payload())
+    svc.ignore(observed.id)
+    with pytest.raises(InvalidDiscoveryTransitionError):
+        svc.match(observed.id)
+
+
+def test_register_creates_canonical_model_and_marks_registered(db, parent_model):
+    from app.modules.model_inventory.models import Model
+
+    svc = DiscoveryService(db, settings.default_tenant_id)
+    observed, _ = svc.ingest(
+        _payload(provider="openai", model_identifier="gpt-registered", display_name="Registered GPT")
+    )
+    response = svc.register(observed.id, None)
+    assert response.status is DiscoveryStatus.REGISTERED
+    assert response.matched_model_id is not None
+
+    model = db.get(Model, response.matched_model_id)
+    assert model is not None
+    assert model.canonical_key == "openai|gpt-registered"
+    assert model.native_model_id == "gpt-registered"
+    assert model.name == "Registered GPT"
+    assert model.source_reference == f"model-discovery:{observed.id}"
+    assert model.source_type == "IMPORT"
+
+
+def test_register_unknown_provider_propagates_registration_error(db, parent_model):
+    from app.modules.model_inventory.domain.errors import ProviderNotFoundError
+
+    svc = DiscoveryService(db, settings.default_tenant_id)
+    observed, _ = svc.ingest(_payload(provider="nope", model_identifier="x-1"))
+    with pytest.raises(ProviderNotFoundError):
+        svc.register(observed.id, None)
+    assert svc.get(observed.id).status is DiscoveryStatus.UNRESOLVED
+
+
+def test_register_after_register_rejected(db, parent_model):
+    svc = DiscoveryService(db, settings.default_tenant_id)
+    observed, _ = svc.ingest(_payload(provider="openai", model_identifier="twice-reg"))
+    svc.register(observed.id, None)
+    with pytest.raises(InvalidDiscoveryTransitionError):
+        svc.register(observed.id, None)
+
+
+def test_ignore_after_register_rejected(db, parent_model):
+    svc = DiscoveryService(db, settings.default_tenant_id)
+    observed, _ = svc.ingest(_payload(provider="openai", model_identifier="reg-then-ignore"))
+    svc.register(observed.id, None)
+    with pytest.raises(InvalidDiscoveryTransitionError):
+        svc.ignore(observed.id)
+
+
+def test_get_missing_raises_not_found(db):
+    from uuid import uuid4
+
+    svc = DiscoveryService(db, settings.default_tenant_id)
+    with pytest.raises(DiscoveryNotFoundError):
+        svc.get(uuid4())
+
+
+
+def test_ignore_twice_rejected(db):
+    svc = DiscoveryService(db, settings.default_tenant_id)
+    observed, _ = svc.ingest(_payload())
+    svc.ignore(observed.id)
+    with pytest.raises(InvalidDiscoveryTransitionError):
+        svc.ignore(observed.id)

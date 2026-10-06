@@ -22,9 +22,12 @@ from app.modules.model_discovery.errors import (
 from app.modules.model_discovery.schemas import (
     DiscoveryCreate,
     DiscoveryFilter,
+    DiscoveryRegisterRequest,
     DiscoveryResponse,
 )
 from app.modules.model_inventory.repositories.model_repository import find_by_canonical_key
+from app.modules.model_inventory.schemas.model import ModelCreate
+from app.modules.model_inventory.services import ModelService
 
 logger = logging.getLogger("auditra.discovery")
 
@@ -101,10 +104,63 @@ class DiscoveryService:
         return DiscoveryResponse.model_validate(entity, from_attributes=True), True
 
     def get(self, discovery_id: UUID) -> DiscoveryResponse:
+        return DiscoveryResponse.model_validate(
+            self._entity(discovery_id), from_attributes=True
+        )
+
+    def match(self, discovery_id: UUID) -> DiscoveryResponse:
+        entity = self._entity(discovery_id)
+        self._reconcile(entity)
+        repository.commit(self.db)
+        self._log("discovery matched", entity)
+        return DiscoveryResponse.model_validate(entity, from_attributes=True)
+
+    def ignore(self, discovery_id: UUID) -> DiscoveryResponse:
+        entity = self._entity(discovery_id)
+        self._ensure_transition(entity, DiscoveryStatus.IGNORED.value)
+        entity.status = DiscoveryStatus.IGNORED.value
+        repository.commit(self.db)
+        self._log("discovery ignored", entity)
+        return DiscoveryResponse.model_validate(entity, from_attributes=True)
+
+    def register(
+        self, discovery_id: UUID, payload: DiscoveryRegisterRequest | None
+    ) -> DiscoveryResponse:
+        entity = self._entity(discovery_id)
+        self._ensure_transition(entity, DiscoveryStatus.REGISTERED.value)
+        request = payload or DiscoveryRegisterRequest()
+        model = ModelService(
+            self.db, self.tenant_id, request_id=self.request_id, actor=self.actor
+        ).register_model(
+            ModelCreate(
+                provider_slug=entity.provider,
+                model_type_slug=request.model_type_slug or entity.model_type or "llm",
+                name=request.name or entity.display_name or entity.model_identifier,
+                native_model_id=entity.model_identifier,
+                source_type="IMPORT",
+                source_reference=f"model-discovery:{entity.id}",
+                metadata=entity.metadata_ or {},
+            )
+        )
+        entity.status = DiscoveryStatus.REGISTERED.value
+        entity.matched_model_id = model.id
+        repository.commit(self.db)
+        self._log("discovery registered through model registration", entity)
+        return DiscoveryResponse.model_validate(entity, from_attributes=True)
+
+    def _entity(self, discovery_id: UUID):
         entity = repository.get_discovery(self.db, self.tenant_id, discovery_id)
         if entity is None:
             raise DiscoveryNotFoundError(f"discovery '{discovery_id}' not found")
-        return DiscoveryResponse.model_validate(entity, from_attributes=True)
+        return entity
+
+    def _ensure_transition(self, entity, target: str) -> None:
+        if entity.status == target:
+            raise InvalidDiscoveryTransitionError(f"discovery already in state {target}")
+        if not can_transition(entity.status, target):
+            raise InvalidDiscoveryTransitionError(
+                f"cannot transition discovery from {entity.status} to {target}"
+            )
 
     def list(self, filters: DiscoveryFilter) -> tuple[list[DiscoveryResponse], int]:
         items, total = repository.list_discoveries(self.db, self.tenant_id, filters)
