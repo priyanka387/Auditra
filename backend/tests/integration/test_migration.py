@@ -120,7 +120,13 @@ def test_model_usage_migration_downgrade_and_upgrade(database):
             assert name in indexes, name
         assert indexes["ix_model_usage_events_event_id"]["unique"] is True
         fks = {fk["referred_table"]: fk for fk in insp.get_foreign_keys("model_usage_events")}
-        assert set(fks) == {"models", "model_versions", "model_deployments", "applications", "agents"}
+        assert set(fks) == {
+            "models",
+            "model_versions",
+            "model_deployments",
+            "applications",
+            "agents",
+        }
         assert all(fk["options"].get("ondelete") == "RESTRICT" for fk in fks.values())
         checks = {c["name"] for c in insp.get_check_constraints("model_usage_events")}
         assert "ck_model_usage_events_status" in checks

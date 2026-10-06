@@ -4,8 +4,11 @@ AI governance backend. **Model Registration V1** — register, update, query, an
 models under a stable canonical identity. **Model Versioning V1** — version those models
 with immutable identity, lifecycle transitions, and optimistic concurrency.
 **Model Deployment V1** — record where each version is deployed and how it is reached.
+**Model Usage V1** — persist immutable model-call usage events (tokens, latency, errors,
+inventory correlation) with LangChain/LangGraph telemetry callbacks and usage statistics.
 Specs: `docs/features/model-inventory/spec.md`, `docs/features/model-inventory/versioning-spec.md`,
-`docs/features/model-inventory/model-deployment.md`.
+`docs/features/model-inventory/model-deployment.md`,
+`docs/features/model-inventory/usage-spec.md`, `docs/features/model-inventory/model-usage.md`.
 
 ## AI Model Inventory status
 
@@ -14,7 +17,7 @@ Specs: `docs/features/model-inventory/spec.md`, `docs/features/model-inventory/v
   [x] Model Versioning
   [x] Model Deployment
   [x] Agent Association
-  [ ] Model Usage
+  [x] Model Usage
   [ ] Model Discovery
 ```
 
@@ -57,6 +60,10 @@ Endpoints: `/health`, `/api/v1/models`, `/api/v1/models/{model_id}`,
 `/api/v1/model-versions/{model_version_id}/deployments`, `/api/v1/deployments`,
 `/api/v1/deployments/{deployment_id}`, `/api/v1/deployments/{deployment_id}/transition`,
 `/api/v1/deployments/{deployment_id}/endpoints`,
-`/api/v1/deployment-endpoints/{endpoint_id}` (OpenAPI at `/docs`).
+`/api/v1/deployment-endpoints/{endpoint_id}`,
+`/api/v1/applications`, `/api/v1/applications/{application_id}/agents`,
+`/api/v1/agents/{agent_id}/models`,
+`/api/v1/model-usage/events`, `/api/v1/model-usage/events/{event_id}`,
+`/api/v1/model-usage/stats` (OpenAPI at `/docs`).
 
 Lint: `uv run ruff check .` and `uv run ruff format .` (from `backend/`).

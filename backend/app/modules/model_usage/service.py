@@ -5,6 +5,23 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.modules.model_inventory.domain.errors import (
+    AgentNotFoundError,
+    ApplicationNotFoundError,
+    DeploymentNotFoundError,
+    DomainError,
+    ModelNotFoundError,
+    ModelVersionMismatchError,
+    ModelVersionNotFoundError,
+)
+from app.modules.model_inventory.models import (
+    Agent,
+    AgentModelAssociation,
+    Application,
+    Model,
+    ModelDeployment,
+    ModelVersion,
+)
 from app.modules.model_usage import repository
 from app.modules.model_usage.enums import TokenUsageSource
 from app.modules.model_usage.errors import (
@@ -26,23 +43,6 @@ from app.modules.model_usage.schemas import (
     UsageStatsTotals,
     UsageTimeBucket,
     payload_fingerprint,
-)
-from app.modules.model_inventory.domain.errors import (
-    AgentNotFoundError,
-    ApplicationNotFoundError,
-    DeploymentNotFoundError,
-    DomainError,
-    ModelNotFoundError,
-    ModelVersionMismatchError,
-    ModelVersionNotFoundError,
-)
-from app.modules.model_inventory.models import (
-    Agent,
-    AgentModelAssociation,
-    Application,
-    Model,
-    ModelDeployment,
-    ModelVersion,
 )
 
 logger = logging.getLogger("auditra.usage")
@@ -188,9 +188,7 @@ class ModelUsageService:
                     extra={"event_id": payload.event_id, "reason": exc.code},
                 )
                 results.append(
-                    BatchItemResult(
-                        event_id=payload.event_id, status="rejected", error=exc.message
-                    )
+                    BatchItemResult(event_id=payload.event_id, status="rejected", error=exc.message)
                 )
         return UsageEventBatchResponse(
             accepted=sum(1 for r in results if r.status == "accepted"),
@@ -211,9 +209,7 @@ class ModelUsageService:
             raise ModelUsageNotFoundError(f"usage event '{identifier}' not found")
         return UsageEventResponse.model_validate(event, from_attributes=True)
 
-    def list_events(
-        self, filters: UsageEventFilter
-    ) -> tuple[list[UsageEventResponse], int]:
+    def list_events(self, filters: UsageEventFilter) -> tuple[list[UsageEventResponse], int]:
         events, total = repository.list_events(self.db, self.tenant_id, filters)
         return [UsageEventResponse.model_validate(e, from_attributes=True) for e in events], total
 
@@ -285,9 +281,7 @@ class ModelUsageService:
                 raise DeploymentNotFoundError(f"deployment '{event.deployment_id}' not found")
             version = self.db.get(ModelVersion, deployment.model_version_id)
             if version is None or version.model_id != event.model_id:
-                raise UsageRelationshipError(
-                    "deployment does not belong to the referenced model"
-                )
+                raise UsageRelationshipError("deployment does not belong to the referenced model")
 
         if event.application_id is not None:
             application = self.db.get(Application, event.application_id)

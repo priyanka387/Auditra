@@ -65,14 +65,12 @@ def test_invalid_enum_rejected():
 
 def test_naive_started_at_rejected():
     with pytest.raises(ValidationError):
-        UsageEventCreate(**_payload(started_at=datetime(2026, 10, 5, 10, 0, 0)))
+        UsageEventCreate(**_payload(started_at=datetime(2026, 10, 5, 10, 0, 0)))  # noqa: DTZ001 - naive timestamp is the point
 
 
 def test_completed_before_started_rejected():
     with pytest.raises(ValidationError):
-        UsageEventCreate(
-            **_payload(completed_at=NOW - timedelta(milliseconds=1), duration_ms=1)
-        )
+        UsageEventCreate(**_payload(completed_at=NOW - timedelta(milliseconds=1), duration_ms=1))
 
 
 def test_negative_metrics_rejected():

@@ -90,8 +90,7 @@ def upgrade() -> None:
             name="ck_model_usage_events_metrics_non_negative",
         ),
         sa.CheckConstraint(
-            "source IN ('api', 'sdk', 'langchain', 'langgraph', 'internal', 'connector', "
-            "'manual')",
+            "source IN ('api', 'sdk', 'langchain', 'langgraph', 'internal', 'connector', 'manual')",
             name="ck_model_usage_events_source",
         ),
         sa.CheckConstraint(
@@ -108,19 +107,29 @@ def upgrade() -> None:
             name="ck_model_usage_events_tokens_non_negative",
         ),
         sa.ForeignKeyConstraint(
-            ["agent_id"], ["agents.id"], ondelete="RESTRICT",
+            ["agent_id"],
+            ["agents.id"],
+            ondelete="RESTRICT",
         ),
         sa.ForeignKeyConstraint(
-            ["application_id"], ["applications.id"], ondelete="RESTRICT",
+            ["application_id"],
+            ["applications.id"],
+            ondelete="RESTRICT",
         ),
         sa.ForeignKeyConstraint(
-            ["deployment_id"], ["model_deployments.id"], ondelete="RESTRICT",
+            ["deployment_id"],
+            ["model_deployments.id"],
+            ondelete="RESTRICT",
         ),
         sa.ForeignKeyConstraint(
-            ["model_id"], ["models.id"], ondelete="RESTRICT",
+            ["model_id"],
+            ["models.id"],
+            ondelete="RESTRICT",
         ),
         sa.ForeignKeyConstraint(
-            ["model_version_id"], ["model_versions.id"], ondelete="RESTRICT",
+            ["model_version_id"],
+            ["model_versions.id"],
+            ondelete="RESTRICT",
         ),
         sa.PrimaryKeyConstraint("id"),
     )

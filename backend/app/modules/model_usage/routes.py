@@ -25,9 +25,7 @@ from app.modules.model_usage.service import ModelUsageService
 
 router = APIRouter(prefix="/api/v1/model-usage")
 
-_CREATED_DOC = (
-    "201 for a new event, 200 when an identical event_id is replayed (idempotent)."
-)
+_CREATED_DOC = "201 for a new event, 200 when an identical event_id is replayed (idempotent)."
 
 
 def _service(request: Request, db: Session) -> ModelUsageService:

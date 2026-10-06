@@ -3,17 +3,18 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.core.config import settings
-from app.modules.model_usage.errors import DuplicateEventIdError
 from app.modules.model_usage.enums import UsageSource, UsageStatus
-from app.modules.model_usage.models import ModelUsageEvent
+from app.modules.model_usage.errors import DuplicateEventIdError
 from app.modules.model_usage.repository import (
     aggregate_stats,
     bucket_stats,
-    commit as repository_commit,
     create_event,
     get_by_event_id,
     get_event,
     list_events,
+)
+from app.modules.model_usage.repository import (
+    commit as repository_commit,
 )
 from app.modules.model_usage.schemas import UsageEventFilter, UsageStatsQuery
 

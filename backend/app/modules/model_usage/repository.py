@@ -37,9 +37,7 @@ def commit(db: Session) -> None:
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise DuplicateEventIdError(
-            "an event with this event_id already exists"
-        ) from None
+        raise DuplicateEventIdError("an event with this event_id already exists") from None
 
 
 def get_by_event_id(db: Session, tenant_id: UUID, event_id: str) -> ModelUsageEvent | None:
@@ -101,7 +99,9 @@ def list_events(
     base = select(ModelUsageEvent).where(*conditions)
     total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
     direction = sort_column.desc() if filters.sort_order == "desc" else sort_column.asc()
-    id_direction = ModelUsageEvent.id.desc() if filters.sort_order == "desc" else ModelUsageEvent.id.asc()
+    id_direction = (
+        ModelUsageEvent.id.desc() if filters.sort_order == "desc" else ModelUsageEvent.id.asc()
+    )
     stmt = (
         base.order_by(direction, id_direction)
         .offset((filters.page - 1) * filters.page_size)
@@ -164,10 +164,7 @@ def bucket_stats(db: Session, tenant_id: UUID, query: UsageStatsQuery) -> list[d
         .order_by(bucket)
     )
     rows = db.execute(stmt).all()
-    return [
-        {"bucket_start": _as_utc(row.bucket_start), **_totals(row[0:9])}
-        for row in rows
-    ]
+    return [{"bucket_start": _as_utc(row.bucket_start), **_totals(row[0:9])} for row in rows]
 
 
 def _as_utc(value: datetime) -> datetime:

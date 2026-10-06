@@ -6,7 +6,10 @@ ERROR_MESSAGE_MAX = 2000
 
 _REDACTIONS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"(?i)\b(bearer)\s+\S+"), r"\1 REDACTED"),
-    (re.compile(r"(?i)\b(api[_-]?key|token|secret|password|authorization)\s*[=:]\s*\S+"), r"\1=REDACTED"),
+    (
+        re.compile(r"(?i)\b(api[_-]?key|token|secret|password|authorization)\s*[=:]\s*\S+"),
+        r"\1=REDACTED",
+    ),
     (re.compile(r"(?i)\bsk-[A-Za-z0-9_\-]{8,}"), "REDACTED"),
 ]
 _STACK_TRACE_MARKER = "Traceback (most recent call last)"

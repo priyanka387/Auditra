@@ -78,9 +78,7 @@ def test_create_event_validation_errors(client):
     negative = client.post(f"{API}/events", json=_payload(model_id, input_tokens=-1))
     assert negative.status_code == 422
 
-    bad_status = client.post(
-        f"{API}/events", json=_payload(model_id, status="fine")
-    )
+    bad_status = client.post(f"{API}/events", json=_payload(model_id, status="fine"))
     assert bad_status.status_code == 422
 
     success_with_error = client.post(
@@ -88,9 +86,7 @@ def test_create_event_validation_errors(client):
     )
     assert success_with_error.status_code == 422
 
-    extra_field = client.post(
-        f"{API}/events", json=_payload(model_id, prompt="secret prompt")
-    )
+    extra_field = client.post(f"{API}/events", json=_payload(model_id, prompt="secret prompt"))
     assert extra_field.status_code == 422
 
 

@@ -5,19 +5,6 @@ import pytest
 import sqlalchemy as sa
 
 from app.core.config import settings
-from app.modules.model_usage.errors import (
-    BatchTooLargeError,
-    IdempotencyConflictError,
-    UsageRelationshipError,
-)
-from app.modules.model_usage.models import ModelUsageEvent
-from app.modules.model_usage.schemas import (
-    UsageEventBatchCreate,
-    UsageEventCreate,
-    UsageEventFilter,
-    UsageStatsQuery,
-)
-from app.modules.model_usage.service import ModelUsageService
 from app.modules.model_inventory.domain.errors import (
     AgentNotFoundError,
     ApplicationNotFoundError,
@@ -37,6 +24,19 @@ from app.modules.model_inventory.services import (
     AgentService,
     ApplicationService,
 )
+from app.modules.model_usage.errors import (
+    BatchTooLargeError,
+    IdempotencyConflictError,
+    UsageRelationshipError,
+)
+from app.modules.model_usage.models import ModelUsageEvent
+from app.modules.model_usage.schemas import (
+    UsageEventBatchCreate,
+    UsageEventCreate,
+    UsageEventFilter,
+    UsageStatsQuery,
+)
+from app.modules.model_usage.service import ModelUsageService
 
 STARTED = datetime(2026, 10, 5, 10, 0, tzinfo=UTC)
 
@@ -90,9 +90,7 @@ def test_duplicate_same_payload_is_idempotent(db, parent_model):
     assert created_first is True
     assert created_second is False
     assert first.id == second.id
-    count = db.scalar(
-        sa.select(sa.func.count()).select_from(ModelUsageEvent)
-    )
+    count = db.scalar(sa.select(sa.func.count()).select_from(ModelUsageEvent))
     assert count == 1
 
 
@@ -100,9 +98,7 @@ def test_duplicate_conflicting_payload_raises(db, parent_model):
     event_id = f"evt-{uuid4()}"
     _service(db).record_event(_payload(parent_model.id, event_id=event_id, input_tokens=10))
     with pytest.raises(IdempotencyConflictError):
-        _service(db).record_event(
-            _payload(parent_model.id, event_id=event_id, input_tokens=99)
-        )
+        _service(db).record_event(_payload(parent_model.id, event_id=event_id, input_tokens=99))
 
 
 def test_unknown_model_rejected(db):
@@ -136,9 +132,7 @@ def test_version_of_other_model_rejected(db, parent_model, parent_version):
     db.commit()
 
     with pytest.raises(ModelVersionMismatchError):
-        _service(db).record_event(
-            _payload(parent_model.id, model_version_id=foreign_version.id)
-        )
+        _service(db).record_event(_payload(parent_model.id, model_version_id=foreign_version.id))
 
     response, _ = _service(db).record_event(
         _payload(parent_model.id, model_version_id=parent_version.id)
@@ -188,9 +182,7 @@ def test_deployment_of_other_model_rejected(db, parent_model, parent_version):
     db.commit()
 
     with pytest.raises(UsageRelationshipError):
-        _service(db).record_event(
-            _payload(parent_model.id, deployment_id=foreign_deployment.id)
-        )
+        _service(db).record_event(_payload(parent_model.id, deployment_id=foreign_deployment.id))
 
     deployment = ModelDeployment(
         tenant_id=settings.default_tenant_id,
@@ -206,9 +198,7 @@ def test_deployment_of_other_model_rejected(db, parent_model, parent_version):
     db.add(deployment)
     db.commit()
 
-    response, _ = _service(db).record_event(
-        _payload(parent_model.id, deployment_id=deployment.id)
-    )
+    response, _ = _service(db).record_event(_payload(parent_model.id, deployment_id=deployment.id))
     assert response.deployment_id == deployment.id
 
     with pytest.raises(DeploymentNotFoundError):
@@ -329,9 +319,7 @@ def test_get_stats_response_shape(db, parent_model):
             completed_at=STARTED + timedelta(seconds=1),
         )
     )
-    _service(db).record_event(
-        _payload(parent_model.id, status="error", error_type="TimeoutError")
-    )
+    _service(db).record_event(_payload(parent_model.id, status="error", error_type="TimeoutError"))
     query = UsageStatsQuery(
         model_id=parent_model.id,
         started_from=datetime(2026, 10, 1, tzinfo=UTC),

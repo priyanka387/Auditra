@@ -31,8 +31,7 @@ class ModelUsageEvent(Base):
             name="ck_model_usage_events_status",
         ),
         CheckConstraint(
-            "source IN ('api', 'sdk', 'langchain', 'langgraph', 'internal', 'connector', "
-            "'manual')",
+            "source IN ('api', 'sdk', 'langchain', 'langgraph', 'internal', 'connector', 'manual')",
             name="ck_model_usage_events_source",
         ),
         CheckConstraint(
@@ -161,6 +160,4 @@ class ModelUsageEvent(Base):
         server_default=text("'{}'"),
     )
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

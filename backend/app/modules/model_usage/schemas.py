@@ -14,6 +14,7 @@ from pydantic import (
     model_validator,
 )
 
+from app.modules.model_inventory.schemas.model import validate_metadata
 from app.modules.model_usage.enums import CostSource, TokenUsageSource, UsageSource, UsageStatus
 from app.modules.model_usage.sanitization import (
     ERROR_CODE_MAX,
@@ -21,7 +22,6 @@ from app.modules.model_usage.sanitization import (
     sanitize_error_message,
     truncate,
 )
-from app.modules.model_inventory.schemas.model import validate_metadata
 
 MAX_TAGS = 50
 MAX_TAG_KEY = 128
