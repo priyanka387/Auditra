@@ -18,7 +18,7 @@ Specs: `docs/features/model-inventory/spec.md`, `docs/features/model-inventory/v
   [x] Model Deployment
   [x] Agent Association
   [x] Model Usage
-  [ ] Model Discovery
+  [x] Model Discovery
 ```
 
 ## Prerequisites
