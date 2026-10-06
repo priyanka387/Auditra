@@ -8,8 +8,8 @@ from app.modules.model_discovery.domain import (
 )
 from app.modules.model_discovery.enums import DiscoverySourceType, DiscoveryStatus
 from app.modules.model_discovery.errors import (
-    DiscoveryNotFoundError,
     DiscoveryError,
+    DiscoveryNotFoundError,
     DuplicateDiscoveryError,
     InvalidDiscoveryQueryError,
     InvalidDiscoveryTransitionError,
@@ -63,9 +63,7 @@ def test_canonical_identity_matches_registration_format():
 
 
 def test_canonical_identity_equivalent_inputs_match():
-    assert canonical_identity(" openai ", "gpt-5.x") == canonical_identity(
-        "OpenAI", "gpt-5.x"
-    )
+    assert canonical_identity(" openai ", "gpt-5.x") == canonical_identity("OpenAI", "gpt-5.x")
 
 
 def test_canonical_identity_blank_raises():

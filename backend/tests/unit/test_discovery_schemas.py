@@ -70,7 +70,12 @@ def test_create_oversized_metadata_rejected():
 def test_create_forbids_extra_fields():
     with pytest.raises(ValidationError):
         DiscoveryCreate.model_validate(
-            {"source_type": "manual", "provider": "openai", "model_identifier": "m", "status": "MATCHED"}
+            {
+                "source_type": "manual",
+                "provider": "openai",
+                "model_identifier": "m",
+                "status": "MATCHED",
+            }
         )
 
 
@@ -117,14 +122,13 @@ def test_response_parses_orm_attributes():
 def test_response_rejects_naive_timestamps():
     with pytest.raises(ValidationError):
         DiscoveryResponse.model_validate(
-            _stub(first_seen_at=datetime(2026, 10, 7)), from_attributes=True
+            _stub(first_seen_at=datetime(2026, 10, 7)),  # noqa: DTZ001
+            from_attributes=True,
         )
 
 
 def test_list_response_computes_pagination_fields():
-    listing = DiscoveryListResponse(
-        items=[], page=2, page_size=25, total=30, total_pages=2
-    )
+    listing = DiscoveryListResponse(items=[], page=2, page_size=25, total=30, total_pages=2)
     assert listing.total_pages == 2 and listing.page == 2
 
 

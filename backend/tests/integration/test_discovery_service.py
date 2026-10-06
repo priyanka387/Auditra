@@ -6,7 +6,12 @@ import pytest
 from app.core.config import settings
 from app.modules.model_discovery import repository
 from app.modules.model_discovery.enums import DiscoverySourceType, DiscoveryStatus
-from app.modules.model_discovery.errors import (DiscoveryNotFoundError, DuplicateDiscoveryError, InvalidDiscoveryQueryError, InvalidDiscoveryTransitionError)
+from app.modules.model_discovery.errors import (
+    DiscoveryNotFoundError,
+    DuplicateDiscoveryError,
+    InvalidDiscoveryQueryError,
+    InvalidDiscoveryTransitionError,
+)
 from app.modules.model_discovery.schemas import DiscoveryCreate, DiscoveryFilter, DiscoveryResponse
 from app.modules.model_discovery.service import DiscoveryService
 
@@ -59,7 +64,9 @@ def test_repository_roundtrip_and_filters(db, parent_model):
     assert fetched is not None and fetched.canonical_identity == "openai|gpt-5.x"
     assert repository.get_discovery(db, uuid4(), manual_id) is None
 
-    hit = repository.find_for_ingest(db, settings.default_tenant_id, "manual", None, "openai|gpt-5.x")
+    hit = repository.find_for_ingest(
+        db, settings.default_tenant_id, "manual", None, "openai|gpt-5.x"
+    )
     assert hit is not None and hit.id == manual_id
     assert (
         repository.find_for_ingest(
@@ -106,7 +113,9 @@ def test_repository_roundtrip_and_filters(db, parent_model):
     assert total == 2 and len(items) == 1
 
     items, total = repository.list_discoveries(
-        db, settings.default_tenant_id, DiscoveryFilter(sort_by="observation_count", sort_order="asc")
+        db,
+        settings.default_tenant_id,
+        DiscoveryFilter(sort_by="observation_count", sort_order="asc"),
     )
     assert total == 2
 
@@ -126,7 +135,6 @@ def test_commit_maps_integrity_error_to_duplicate(db):
     with pytest.raises(DuplicateDiscoveryError):
         repository.commit(db)
     db.rollback()
-
 
 
 def _payload(**overrides):
@@ -160,9 +168,7 @@ def test_ingest_matches_existing_canonical_model(db, parent_model):
 
     svc = DiscoveryService(db, settings.default_tenant_id)
     before = db.scalar(select(func.count()).select_from(Model))
-    response, created = svc.ingest(
-        _payload(provider="OpenAI ", model_identifier="versioned-1")
-    )
+    response, created = svc.ingest(_payload(provider="OpenAI ", model_identifier="versioned-1"))
     assert created is True
     assert response.status is DiscoveryStatus.MATCHED
     assert response.matched_model_id == parent_model.id
@@ -252,7 +258,6 @@ def test_service_list_returns_responses_and_passes_unknown_sort(db):
         svc.list(DiscoveryFilter.model_construct(sort_by="bogus", page=1, page_size=25))
 
 
-
 def test_match_links_newly_registered_model(db, parent_model):
     from app.modules.model_inventory.schemas.model import ModelCreate
     from app.modules.model_inventory.services import ModelService
@@ -296,7 +301,9 @@ def test_register_creates_canonical_model_and_marks_registered(db, parent_model)
 
     svc = DiscoveryService(db, settings.default_tenant_id)
     observed, _ = svc.ingest(
-        _payload(provider="openai", model_identifier="gpt-registered", display_name="Registered GPT")
+        _payload(
+            provider="openai", model_identifier="gpt-registered", display_name="Registered GPT"
+        )
     )
     response = svc.register(observed.id, None)
     assert response.status is DiscoveryStatus.REGISTERED
@@ -343,7 +350,6 @@ def test_get_missing_raises_not_found(db):
     svc = DiscoveryService(db, settings.default_tenant_id)
     with pytest.raises(DiscoveryNotFoundError):
         svc.get(uuid4())
-
 
 
 def test_ignore_twice_rejected(db):
