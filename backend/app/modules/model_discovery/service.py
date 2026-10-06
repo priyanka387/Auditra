@@ -19,6 +19,7 @@ from app.modules.model_discovery.errors import (
     DuplicateDiscoveryError,
     InvalidDiscoveryTransitionError,
 )
+from app.modules.model_discovery.integrations.base import InsufficientMetadataResult
 from app.modules.model_discovery.schemas import (
     DiscoveryCreate,
     DiscoveryFilter,
@@ -104,9 +105,7 @@ class DiscoveryService:
         return DiscoveryResponse.model_validate(entity, from_attributes=True), True
 
     def get(self, discovery_id: UUID) -> DiscoveryResponse:
-        return DiscoveryResponse.model_validate(
-            self._entity(discovery_id), from_attributes=True
-        )
+        return DiscoveryResponse.model_validate(self._entity(discovery_id), from_attributes=True)
 
     def match(self, discovery_id: UUID) -> DiscoveryResponse:
         entity = self._entity(discovery_id)
@@ -207,4 +206,29 @@ class DiscoveryService:
                 else None,
                 "request_id": self.request_id,
             },
+        )
+
+
+class ServiceDiscoverySink:
+    """DiscoverySink backed by DiscoveryService; best-effort unless strict."""
+
+    def __init__(self, service: DiscoveryService, *, strict: bool = False) -> None:
+        self.service = service
+        self.strict = strict
+
+    def observe(self, payload: DiscoveryCreate) -> None:
+        try:
+            self.service.ingest(payload)
+        except Exception:
+            if self.strict:
+                raise
+            logger.exception("discovery observation failed")
+
+    def insufficient_metadata(self, result: InsufficientMetadataResult) -> None:
+        logger.warning(
+            "discovery observation insufficient: code=%s reason=%s source_type=%s model_class=%s",
+            result.error_code,
+            result.reason,
+            result.source_type,
+            result.model_class,
         )

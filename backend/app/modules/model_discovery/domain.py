@@ -34,7 +34,9 @@ def normalize_model_identifier(raw: str) -> str:
 
 
 def canonical_identity(provider: str, model_identifier: str) -> str:
-    return build_canonical_key(normalize_provider(provider), normalize_model_identifier(model_identifier))
+    return build_canonical_key(
+        normalize_provider(provider), normalize_model_identifier(model_identifier)
+    )
 
 
 def can_transition(current: DiscoveryStatus | str, target: DiscoveryStatus | str) -> bool:

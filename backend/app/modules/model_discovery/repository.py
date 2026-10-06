@@ -117,6 +117,4 @@ def commit(db: Session) -> None:
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise DuplicateDiscoveryError(
-            "equivalent discovery observation already exists"
-        ) from None
+        raise DuplicateDiscoveryError("equivalent discovery observation already exists") from None
