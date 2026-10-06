@@ -140,3 +140,42 @@ def test_model_usage_migration_downgrade_and_upgrade(database):
         assert sa.inspect(engine).has_table("model_usage_events")
     finally:
         engine.dispose()
+
+
+def test_model_discovery_migration_downgrade_and_upgrade(database):
+    cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    engine = sa.create_engine(settings.database_url, poolclass=sa.pool.NullPool)
+    try:
+        insp = sa.inspect(engine)
+        assert insp.has_table("model_discovery")
+        indexes = {i["name"]: i for i in insp.get_indexes("model_discovery")}
+        for name in (
+            "uq_model_discovery_tenant_source_identity",
+            "ix_model_discovery_tenant_canonical_identity",
+            "ix_model_discovery_tenant_status",
+            "ix_model_discovery_tenant_source_type",
+            "ix_model_discovery_tenant_provider",
+            "ix_model_discovery_matched_model_id",
+            "ix_model_discovery_tenant_last_seen_at",
+        ):
+            assert name in indexes, name
+        assert indexes["uq_model_discovery_tenant_source_identity"]["unique"] is True
+        fks = insp.get_foreign_keys("model_discovery")
+        assert any(
+            fk["referred_table"] == "models" and fk["options"].get("ondelete") == "RESTRICT"
+            for fk in fks
+        )
+        checks = {c["name"] for c in insp.get_check_constraints("model_discovery")}
+        assert "ck_model_discovery_status" in checks
+        assert "ck_model_discovery_source_type" in checks
+        assert "ck_model_discovery_observation_count" in checks
+        try:
+            command.downgrade(cfg, "0005")
+            insp = sa.inspect(engine)
+            assert not insp.has_table("model_discovery")
+            assert insp.has_table("model_usage_events")
+        finally:
+            command.upgrade(cfg, "head")
+        assert sa.inspect(engine).has_table("model_discovery")
+    finally:
+        engine.dispose()
