@@ -11,6 +11,7 @@ from app.core.errors import (
     unhandled_error_handler,
     validation_error_handler,
 )
+from app.modules.model_discovery.routes import router as model_discovery_router
 from app.modules.model_inventory.api import (
     agent_model_router,
     agent_router,
@@ -96,6 +97,7 @@ def create_app() -> FastAPI:
     app.include_router(agent_model_router)
     app.include_router(deployment_router)
     app.include_router(model_usage_router)
+    app.include_router(model_discovery_router)
     return app
 
 
