@@ -1,6 +1,6 @@
 import json
 from datetime import UTC, datetime
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from app.modules.audit.sanitization import REDACTED, sanitize_state
 

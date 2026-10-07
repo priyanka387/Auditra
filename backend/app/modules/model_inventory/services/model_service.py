@@ -2,8 +2,11 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.modules.audit.enums import AuditEventType
+from app.modules.audit.service import AuditService
 from app.modules.model_inventory.domain import (
     ModelEvent,
     build_canonical_key,
@@ -47,6 +50,27 @@ _UPDATE_FIELDS = (
 )
 
 
+def model_audit_state(model: Model) -> dict:
+    """Governance-relevant projection of a model for audit before/after state."""
+    return {
+        "canonical_key": model.canonical_key,
+        "name": model.name,
+        "provider_slug": model.provider.slug,
+        "model_type_slug": model.model_type.slug,
+        "description": model.description,
+        "owner_name": model.owner_name,
+        "owner_contact": model.owner_contact,
+        "team_name": model.team_name,
+        "hosting_mode": model.hosting_mode,
+        "runtime_hint": model.runtime_hint,
+        "lifecycle_state": model.lifecycle_state,
+        "source_type": model.source_type,
+        "source_reference": model.source_reference,
+        "metadata": dict(model.metadata_ or {}),
+        "tags": [{"key": tag.key, "value": tag.value} for tag in model.tags],
+    }
+
+
 class ModelService:
     def __init__(
         self,
@@ -54,11 +78,13 @@ class ModelService:
         tenant_id: UUID,
         request_id: str | None = None,
         actor: str | None = None,
+        source: str = "api",
     ) -> None:
         self.db = db
         self.tenant_id = tenant_id
         self.request_id = request_id
         self.actor = actor
+        self.audit = AuditService(db, tenant_id, request_id=request_id, actor=actor, source=source)
 
     def register_model(self, payload: ModelCreate) -> Model:
         provider = get_provider_by_slug(self.db, self.tenant_id, payload.provider_slug)
@@ -103,7 +129,18 @@ class ModelService:
             self.db.add(ModelTagLink(model_id=model.id, tag_id=tag_id))
 
         model_id = model.id
-        commit(self.db)
+        try:
+            self.db.flush()
+            self.audit.record_event(
+                event_type=AuditEventType.MODEL_CREATED,
+                resource_type="model",
+                resource_id=str(model_id),
+                after_state=model_audit_state(model),
+            )
+            commit(self.db)
+        except IntegrityError:
+            self.db.rollback()
+            raise DuplicateModelError("model with this identity already exists") from None
         self._dispatch("model.created", model_id, [])
         return model
 
@@ -127,6 +164,7 @@ class ModelService:
         model = self._get_or_404(model_id)
         if model.lifecycle_state == "ARCHIVED":
             raise ModelArchivedError(f"model '{model_id}' is archived")
+        before_state = model_audit_state(model)
 
         if payload.native_model_id is not None and payload.native_model_id != model.native_model_id:
             raise IdentityImmutableError("native_model_id cannot be changed")
@@ -186,8 +224,18 @@ class ModelService:
             self.db.execute(delete(ModelTagLink).where(ModelTagLink.model_id == model.id))
             for key, value in new_tag_pairs:
                 self.db.add(ModelTagLink(model_id=model.id, tag_id=self._resolve_tag(key, value)))
+            self.db.expire(model, ["tags"])
 
         model.record_version += 1
+        if changed:
+            self.audit.record_event(
+                event_type=AuditEventType.MODEL_UPDATED,
+                resource_type="model",
+                resource_id=str(model_id),
+                before_state=before_state,
+                after_state=model_audit_state(model),
+                changed_fields=sorted(changed),
+            )
         commit(self.db)
         self._dispatch("model.updated", model_id, sorted(changed))
         return model
@@ -196,9 +244,18 @@ class ModelService:
         model = self._get_or_404(model_id)
         if model.lifecycle_state == "ARCHIVED":
             return
+        before_state = model_audit_state(model)
         model.lifecycle_state = "ARCHIVED"
         model.archived_at = datetime.now(UTC)
         archived_id = model.id
+        self.audit.record_event(
+            event_type=AuditEventType.MODEL_UPDATED,
+            resource_type="model",
+            resource_id=str(archived_id),
+            before_state=before_state,
+            after_state=model_audit_state(model),
+            changed_fields=["lifecycle_state"],
+        )
         commit(self.db)
         self._dispatch("model.archived", archived_id, ["archived"])
 

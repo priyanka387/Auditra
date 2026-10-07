@@ -76,8 +76,7 @@ def test_list_events_filters_and_orders(db):
         AuditFilters(occurred_from=now - timedelta(hours=1), occurred_to=now + timedelta(hours=1))
     )
     assert total == 3
-    items, total = svc.list_events(AuditFilters(occurred_from=now + timedelta(hours=1))
-    )
+    items, total = svc.list_events(AuditFilters(occurred_from=now + timedelta(hours=1)))
     assert total == 0
 
 
@@ -85,9 +84,7 @@ def test_list_events_rejects_inverted_date_range(db):
     svc = _service(db)
     now = datetime.now(UTC)
     with pytest.raises(InvalidAuditFilterError):
-        svc.list_events(
-            AuditFilters(occurred_from=now, occurred_to=now - timedelta(days=1))
-        )
+        svc.list_events(AuditFilters(occurred_from=now, occurred_to=now - timedelta(days=1)))
 
 
 def test_list_events_rejects_bad_event_type_filter(db):

@@ -146,9 +146,7 @@ def test_pagination_deterministic(client, db):
     seen = [i["id"] for page in (page1, page2, page3) for i in page["items"]]
     assert seen == list(reversed(ids))
     assert len(set(seen)) == 5
-    sequences = [
-        i["sequence_no"] for page in (page1, page2, page3) for i in page["items"]
-    ]
+    sequences = [i["sequence_no"] for page in (page1, page2, page3) for i in page["items"]]
     assert sequences == sorted(sequences, reverse=True)
 
 
@@ -178,6 +176,4 @@ def test_audit_mutation_methods_not_allowed(client, db):
     event_id = _seed(db).id
     for method in ("post", "put", "patch", "delete"):
         assert getattr(client, method)(f"{API}/audit/events").status_code == 405
-        assert (
-            getattr(client, method)(f"{API}/audit/events/{event_id}").status_code == 405
-        )
+        assert getattr(client, method)(f"{API}/audit/events/{event_id}").status_code == 405

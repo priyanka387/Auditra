@@ -62,14 +62,11 @@ def list_events(
 ) -> tuple[list[AuditEvent], int]:
     conditions = _conditions(tenant_id, filters)
     total = db.scalar(select(func.count()).select_from(AuditEvent).where(*conditions)) or 0
-    rows = (
-        db.scalars(
-            select(AuditEvent)
-            .where(*conditions)
-            .order_by(AuditEvent.sequence_no.desc())
-            .offset((page - 1) * page_size)
-            .limit(page_size)
-        )
-        .all()
-    )
+    rows = db.scalars(
+        select(AuditEvent)
+        .where(*conditions)
+        .order_by(AuditEvent.sequence_no.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    ).all()
     return list(rows), total

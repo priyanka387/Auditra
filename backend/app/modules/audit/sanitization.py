@@ -37,7 +37,9 @@ def sanitize_state(value: Any) -> Any:
         return str(value)
     if isinstance(value, dict):
         return {
-            key: REDACTED if isinstance(key, str) and _SENSITIVE_KEY.search(key) else sanitize_state(item)
+            key: REDACTED
+            if isinstance(key, str) and _SENSITIVE_KEY.search(key)
+            else sanitize_state(item)
             for key, item in value.items()
         }
     if isinstance(value, (list, tuple, set)):

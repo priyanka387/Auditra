@@ -22,7 +22,7 @@ def get_audit_reader() -> None:
     enforces ``ai_inventory.audit.read`` here (401/403) without touching
     audit storage or query logic.
     """
-    return None
+    return
 
 
 def _service(request: Request, db: Session) -> AuditService:

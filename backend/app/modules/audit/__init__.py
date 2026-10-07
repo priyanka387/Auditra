@@ -1,4 +1,4 @@
-from app.modules.audit.enums import AuditEventType, EVENT_TYPE_PATTERN
+from app.modules.audit.enums import EVENT_TYPE_PATTERN, AuditEventType
 from app.modules.audit.errors import (
     AuditEventNotFoundError,
     InvalidAuditEventError,

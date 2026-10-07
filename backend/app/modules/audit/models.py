@@ -75,9 +75,7 @@ class AuditEvent(Base):
     request_id: Mapped[str | None] = mapped_column(String(255))
     correlation_id: Mapped[str | None] = mapped_column(String(255))
     schema_version: Mapped[int] = mapped_column(default=1, server_default=text("1"))
-    changed_fields: Mapped[list | None] = mapped_column(
-        JSON().with_variant(JSONB, "postgresql")
-    )
+    changed_fields: Mapped[list | None] = mapped_column(JSON().with_variant(JSONB, "postgresql"))
     before_state: Mapped[dict | None] = mapped_column(JSON().with_variant(JSONB, "postgresql"))
     after_state: Mapped[dict | None] = mapped_column(JSON().with_variant(JSONB, "postgresql"))
     metadata_: Mapped[dict | None] = mapped_column(
