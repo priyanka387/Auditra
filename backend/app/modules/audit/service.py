@@ -24,7 +24,9 @@ class ActorContext:
     id: str | None
 
 
-def actor_context(actor: str | None) -> ActorContext:
+def actor_context(actor: str | None, actor_type: str | None = None) -> ActorContext:
+    if actor_type is not None:
+        return ActorContext(type=actor_type, id=actor)
     return ActorContext(type="user" if actor else "system", id=actor)
 
 
@@ -48,6 +50,7 @@ class AuditService:
         request_id: str | None = None,
         actor: str | None = None,
         source: str = "api",
+        actor_type: str | None = None,
     ) -> None:
         if not source:
             raise InvalidAuditEventError("source must be non-empty")
@@ -56,6 +59,7 @@ class AuditService:
         self.request_id = request_id
         self.actor = actor
         self.source = source
+        self.actor_type = actor_type
 
     def record_event(
         self,
@@ -75,7 +79,7 @@ class AuditService:
         """
         validate_event_type(str(event_type))
         validate_resource(resource_type, str(resource_id))
-        actor = actor_context(self.actor)
+        actor = actor_context(self.actor, self.actor_type)
         now = datetime.now(UTC)
         event = AuditEvent(
             id=uuid4(),

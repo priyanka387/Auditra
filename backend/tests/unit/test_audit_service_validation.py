@@ -28,6 +28,13 @@ def test_actor_context_maps_user_and_system():
     assert actor_context(None) == ActorContext(type="system", id=None)
 
 
+def test_actor_context_supports_explicit_actor_types():
+    assert actor_context("discovery-01", "connector") == ActorContext(
+        type="connector", id="discovery-01"
+    )
+    assert actor_context("deployer", "service") == ActorContext(type="service", id="deployer")
+
+
 def test_audit_source_must_be_non_empty():
     from uuid import uuid4
 

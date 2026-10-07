@@ -6,6 +6,7 @@ from app.modules.audit.errors import (
 )
 from app.modules.audit.models import AuditEvent
 from app.modules.audit.repository import AuditFilters
+from app.modules.audit.routes import router
 from app.modules.audit.service import ActorContext, AuditService, actor_context
 
 __all__ = [
@@ -19,4 +20,5 @@ __all__ = [
     "InvalidAuditEventError",
     "InvalidAuditFilterError",
     "actor_context",
+    "router",
 ]
