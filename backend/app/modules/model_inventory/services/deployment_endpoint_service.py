@@ -3,6 +3,8 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 
+from app.modules.audit.enums import AuditEventType
+from app.modules.audit.service import AuditService
 from app.modules.model_inventory.domain import DeploymentEndpointEvent, dispatch_event
 from app.modules.model_inventory.domain.errors import (
     DeploymentAlreadyArchivedError,
@@ -41,6 +43,23 @@ _MUTABLE_FIELDS = (
 )
 
 
+def endpoint_audit_state(endpoint: DeploymentEndpoint) -> dict:
+    """Governance-relevant projection of an endpoint for audit before/after state."""
+    return {
+        "name": endpoint.name,
+        "endpoint_type": endpoint.endpoint_type,
+        "protocol": endpoint.protocol,
+        "url": endpoint.url,
+        "route": endpoint.route,
+        "auth_type": endpoint.auth_type,
+        "auth_reference": endpoint.auth_reference,
+        "is_primary": endpoint.is_primary,
+        "status": endpoint.status,
+        "health_status": endpoint.health_status,
+        "metadata": dict(endpoint.metadata_ or {}),
+    }
+
+
 class DeploymentEndpointService:
     def __init__(
         self,
@@ -48,11 +67,13 @@ class DeploymentEndpointService:
         tenant_id: UUID,
         request_id: str | None = None,
         actor: str | None = None,
+        source: str = "api",
     ) -> None:
         self.db = db
         self.tenant_id = tenant_id
         self.request_id = request_id
         self.actor = actor
+        self.audit = AuditService(db, tenant_id, request_id=request_id, actor=actor, source=source)
 
     def create_endpoint(
         self, deployment_id: UUID, payload: DeploymentEndpointCreate
@@ -83,6 +104,13 @@ class DeploymentEndpointService:
             created_by=self.actor,
         )
         endpoint_id = endpoint.id
+        self.audit.record_event(
+            event_type=AuditEventType.DEPLOYMENT_ENDPOINT_CREATED,
+            resource_type="deployment_endpoint",
+            resource_id=str(endpoint_id),
+            after_state=endpoint_audit_state(endpoint),
+            metadata={"deployment_id": str(deployment_id)},
+        )
         commit(self.db)
         self._dispatch("deployment_endpoint.created", deployment_id, endpoint_id, [])
         return endpoint
@@ -105,6 +133,7 @@ class DeploymentEndpointService:
         endpoint = self.get_endpoint(endpoint_id)
         if endpoint.archived_at is not None:
             raise EndpointArchivedError(f"endpoint '{endpoint_id}' is archived")
+        before_state = endpoint_audit_state(endpoint)
 
         protocol = payload.protocol if payload.protocol is not None else endpoint.protocol
         url = payload.url if payload.url is not None else endpoint.url
@@ -141,6 +170,15 @@ class DeploymentEndpointService:
 
         if changed and self.actor is not None:
             endpoint.updated_by = self.actor
+        if changed:
+            self.audit.record_event(
+                event_type=AuditEventType.DEPLOYMENT_ENDPOINT_UPDATED,
+                resource_type="deployment_endpoint",
+                resource_id=str(endpoint.id),
+                before_state=before_state,
+                after_state=endpoint_audit_state(endpoint),
+                changed_fields=sorted(changed),
+            )
         commit(self.db)
         self._dispatch("deployment_endpoint.updated", endpoint.deployment_id, endpoint.id, changed)
         return endpoint
@@ -149,7 +187,16 @@ class DeploymentEndpointService:
         endpoint = self.get_endpoint(endpoint_id)
         if endpoint.archived_at is not None:
             return
+        before_state = endpoint_audit_state(endpoint)
         endpoint.archived_at = datetime.now(UTC)
+        self.audit.record_event(
+            event_type=AuditEventType.DEPLOYMENT_ENDPOINT_ARCHIVED,
+            resource_type="deployment_endpoint",
+            resource_id=str(endpoint.id),
+            before_state=before_state,
+            after_state=endpoint_audit_state(endpoint),
+            changed_fields=["archived_at"],
+        )
         commit(self.db)
         self._dispatch(
             "deployment_endpoint.archived", endpoint.deployment_id, endpoint.id, ["archived"]
