@@ -4,6 +4,8 @@ import sqlalchemy as sa
 from app.core.config import settings
 from app.modules.audit.models import AuditEvent
 from app.modules.audit.service import AuditService
+from app.modules.model_discovery.schemas import DiscoveryCreate
+from app.modules.model_discovery.service import DiscoveryService
 from app.modules.model_inventory.domain.errors import DuplicateModelError
 from app.modules.model_inventory.models import Model
 from app.modules.model_inventory.schemas import ModelCreate, ModelUpdate
@@ -234,3 +236,37 @@ def test_create_model_via_api_writes_audit_with_request_id(client, db):
     assert event["resource_type"] == "model"
     assert event["resource_id"] == created.json()["id"]
     assert event["request_id"] == "req-flow-01"
+
+
+def test_discovery_register_emits_model_registered(db):
+    seed_reference_data(db)
+    db.commit()
+    svc = DiscoveryService(db, settings.default_tenant_id, request_id="req-disc-01", actor="user-7")
+    observed, _ = svc.ingest(
+        DiscoveryCreate.model_validate(
+            {
+                "source_type": "manual",
+                "provider": "openai",
+                "model_identifier": "gpt-discovered",
+                "model_type": "llm",
+                "display_name": "Discovered GPT",
+            }
+        )
+    )
+    response = svc.register(observed.id, None)
+
+    events = _model_events(db, response.matched_model_id)
+    assert [e.event_type for e in events] == ["model.created", "model.registered"]
+    registered = events[-1]
+    assert registered.resource_type == "model"
+    assert registered.resource_id == str(response.matched_model_id)
+    assert registered.request_id == "req-disc-01"
+    assert registered.actor_type == "user"
+    assert registered.actor_id == "user-7"
+    assert registered.source == "api"
+    assert registered.metadata_ == {
+        "registration_mode": "discovered_then_registered",
+        "discovery_id": str(observed.id),
+        "discovery_source_type": "manual",
+    }
+    assert registered.after_state["canonical_key"] == "openai|gpt-discovered"
