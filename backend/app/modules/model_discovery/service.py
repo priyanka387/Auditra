@@ -5,6 +5,8 @@ from uuid import UUID
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.modules.audit.enums import AuditEventType
+from app.modules.audit.service import AuditService
 from app.modules.model_discovery import repository
 from app.modules.model_discovery.domain import (
     can_transition,
@@ -29,6 +31,7 @@ from app.modules.model_discovery.schemas import (
 from app.modules.model_inventory.repositories.model_repository import find_by_canonical_key
 from app.modules.model_inventory.schemas.model import ModelCreate
 from app.modules.model_inventory.services import ModelService
+from app.modules.model_inventory.services.model_service import model_audit_state
 
 logger = logging.getLogger("auditra.discovery")
 
@@ -48,11 +51,13 @@ class DiscoveryService:
         tenant_id: UUID,
         request_id: str | None = None,
         actor: str | None = None,
+        source: str = "api",
     ) -> None:
         self.db = db
         self.tenant_id = tenant_id
         self.request_id = request_id
         self.actor = actor
+        self.audit = AuditService(db, tenant_id, request_id=request_id, actor=actor, source=source)
 
     def ingest(self, payload: DiscoveryCreate) -> tuple[DiscoveryResponse, bool]:
         now = datetime.now(UTC)
@@ -143,6 +148,17 @@ class DiscoveryService:
         )
         entity.status = DiscoveryStatus.REGISTERED.value
         entity.matched_model_id = model.id
+        self.audit.record_event(
+            event_type=AuditEventType.MODEL_REGISTERED,
+            resource_type="model",
+            resource_id=str(model.id),
+            after_state=model_audit_state(model),
+            metadata={
+                "registration_mode": "discovered_then_registered",
+                "discovery_id": str(entity.id),
+                "discovery_source_type": entity.source_type,
+            },
+        )
         repository.commit(self.db)
         self._log("discovery registered through model registration", entity)
         return DiscoveryResponse.model_validate(entity, from_attributes=True)

@@ -6,9 +6,12 @@ with immutable identity, lifecycle transitions, and optimistic concurrency.
 **Model Deployment V1** — record where each version is deployed and how it is reached.
 **Model Usage V1** — persist immutable model-call usage events (tokens, latency, errors,
 inventory correlation) with LangChain/LangGraph telemetry callbacks and usage statistics.
+**Audit V1** — append-only, same-transaction audit event trail for model, deployment, and
+endpoint changes with a read-only query API and sanitized before/after state.
 Specs: `docs/features/model-inventory/spec.md`, `docs/features/model-inventory/versioning-spec.md`,
 `docs/features/model-inventory/model-deployment.md`,
-`docs/features/model-inventory/usage-spec.md`, `docs/features/model-inventory/model-usage.md`.
+`docs/features/model-inventory/usage-spec.md`, `docs/features/model-inventory/model-usage.md`,
+`docs/features/model-inventory/audit.md`.
 
 ## AI Model Inventory status
 
@@ -19,6 +22,7 @@ Specs: `docs/features/model-inventory/spec.md`, `docs/features/model-inventory/v
   [x] Agent Association
   [x] Model Usage
   [x] Model Discovery
+  [x] Audit
 ```
 
 ## Prerequisites
@@ -64,6 +68,7 @@ Endpoints: `/health`, `/api/v1/models`, `/api/v1/models/{model_id}`,
 `/api/v1/applications`, `/api/v1/applications/{application_id}/agents`,
 `/api/v1/agents/{agent_id}/models`,
 `/api/v1/model-usage/events`, `/api/v1/model-usage/events/{event_id}`,
-`/api/v1/model-usage/stats` (OpenAPI at `/docs`).
+`/api/v1/model-usage/stats`, `/api/v1/audit/events`,
+`/api/v1/audit/events/{event_id}` (OpenAPI at `/docs`).
 
 Lint: `uv run ruff check .` and `uv run ruff format .` (from `backend/`).

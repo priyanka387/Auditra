@@ -3,6 +3,8 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 
+from app.modules.audit.enums import AuditEventType
+from app.modules.audit.service import AuditService
 from app.modules.model_inventory.domain import (
     DEPLOYABLE_VERSION_STATES,
     DeploymentEvent,
@@ -48,6 +50,31 @@ _MUTABLE_FIELDS = (
 )
 
 
+def deployment_audit_state(deployment: ModelDeployment) -> dict:
+    """Governance-relevant projection of a deployment for audit before/after state."""
+    return {
+        "name": deployment.name,
+        "environment": deployment.environment,
+        "deployment_kind": deployment.deployment_kind,
+        "status": deployment.status,
+        "status_source": deployment.status_source,
+        "target_type": deployment.target_type,
+        "target_name": deployment.target_name,
+        "region": deployment.region,
+        "cluster_name": deployment.cluster_name,
+        "namespace": deployment.namespace,
+        "runtime": deployment.runtime,
+        "serving_framework": deployment.serving_framework,
+        "image_uri": deployment.image_uri,
+        "desired_replicas": deployment.desired_replicas,
+        "observed_replicas": deployment.observed_replicas,
+        "model_version_id": str(deployment.model_version_id),
+        "configuration": dict(deployment.configuration or {}),
+        "metadata": dict(deployment.metadata_ or {}),
+        "source": deployment.source,
+    }
+
+
 class DeploymentService:
     def __init__(
         self,
@@ -55,11 +82,13 @@ class DeploymentService:
         tenant_id: UUID,
         request_id: str | None = None,
         actor: str | None = None,
+        source: str = "api",
     ) -> None:
         self.db = db
         self.tenant_id = tenant_id
         self.request_id = request_id
         self.actor = actor
+        self.audit = AuditService(db, tenant_id, request_id=request_id, actor=actor, source=source)
 
     def create_deployment(
         self, model_version_id: UUID, payload: DeploymentCreate
@@ -113,6 +142,13 @@ class DeploymentService:
             created_by=self.actor,
         )
         deployment_id = deployment.id
+        self.audit.record_event(
+            event_type=AuditEventType.DEPLOYMENT_CREATED,
+            resource_type="deployment",
+            resource_id=str(deployment_id),
+            after_state=deployment_audit_state(deployment),
+            metadata={"model_version_id": str(model_version_id)},
+        )
         commit(self.db)
         self._dispatch("deployment.created", deployment_id, model_version_id, [])
         return deployment
@@ -143,6 +179,7 @@ class DeploymentService:
     def update_deployment(self, deployment_id: UUID, payload: DeploymentUpdate) -> ModelDeployment:
         deployment = self._get_or_404(deployment_id)
         self._assert_not_archived(deployment)
+        before_state = deployment_audit_state(deployment)
 
         changed: list[str] = []
         for field in _MUTABLE_FIELDS:
@@ -159,6 +196,15 @@ class DeploymentService:
 
         if changed and self.actor is not None:
             deployment.updated_by = self.actor
+        if changed:
+            self.audit.record_event(
+                event_type=AuditEventType.DEPLOYMENT_UPDATED,
+                resource_type="deployment",
+                resource_id=str(deployment_id),
+                before_state=before_state,
+                after_state=deployment_audit_state(deployment),
+                changed_fields=sorted(changed),
+            )
         commit(self.db)
         self._dispatch("deployment.updated", deployment_id, deployment.model_version_id, changed)
         return deployment
@@ -183,6 +229,14 @@ class DeploymentService:
         summary = [f"{current}->{target}"]
         if payload.reason:
             summary.append(payload.reason)
+        self.audit.record_event(
+            event_type=AuditEventType.DEPLOYMENT_STATUS_CHANGED,
+            resource_type="deployment",
+            resource_id=str(deployment_id),
+            before_state={"status": current},
+            after_state={"status": target},
+            changed_fields=["status"],
+        )
         commit(self.db)
         self._dispatch(
             "deployment.status_changed", deployment_id, deployment.model_version_id, summary
@@ -193,8 +247,17 @@ class DeploymentService:
         deployment = self._get_or_404(deployment_id)
         if deployment.archived_at is not None:
             return
+        before_state = deployment_audit_state(deployment)
         deployment.status = "deprecated"
         deployment.archived_at = datetime.now(UTC)
+        self.audit.record_event(
+            event_type=AuditEventType.DEPLOYMENT_ARCHIVED,
+            resource_type="deployment",
+            resource_id=str(deployment_id),
+            before_state=before_state,
+            after_state=deployment_audit_state(deployment),
+            changed_fields=["archived_at", "status"],
+        )
         commit(self.db)
         self._dispatch(
             "deployment.archived", deployment_id, deployment.model_version_id, ["archived"]
