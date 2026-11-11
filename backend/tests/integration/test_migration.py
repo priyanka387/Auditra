@@ -210,3 +210,32 @@ def test_model_discovery_migration_downgrade_and_upgrade(database):
         assert sa.inspect(engine).has_table("model_discovery")
     finally:
         engine.dispose()
+
+
+def test_discovery_sources_migration_downgrade_and_upgrade(database):
+    cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    engine = sa.create_engine(settings.database_url, poolclass=sa.pool.NullPool)
+    try:
+        insp = sa.inspect(engine)
+        assert insp.has_table("discovery_sources")
+        indexes = {i["name"]: i for i in insp.get_indexes("discovery_sources")}
+        for name in (
+            "uq_discovery_sources_tenant_name",
+            "ix_discovery_sources_tenant_status",
+            "ix_discovery_sources_tenant_source_type",
+        ):
+            assert name in indexes, name
+        assert indexes["uq_discovery_sources_tenant_name"]["unique"] is True
+        checks = {c["name"] for c in insp.get_check_constraints("discovery_sources")}
+        assert "ck_discovery_sources_source_type" in checks
+        assert "ck_discovery_sources_status" in checks
+        assert not insp.get_foreign_keys("discovery_sources")
+        try:
+            command.downgrade(cfg, "0007")
+            assert not sa.inspect(engine).has_table("discovery_sources")
+            assert sa.inspect(engine).has_table("model_discovery")
+        finally:
+            command.upgrade(cfg, "head")
+        assert sa.inspect(engine).has_table("discovery_sources")
+    finally:
+        engine.dispose()
