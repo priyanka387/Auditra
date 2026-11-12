@@ -16,3 +16,18 @@ class DiscoverySourceType(str, Enum):
 class DiscoverySourceStatus(str, Enum):
     ACTIVE = "active"
     DISABLED = "disabled"
+
+
+class DiscoveryRunStatus(str, Enum):
+    """Lifecycle of a single execution against a discovery source.
+
+    States and their transitions follow the master Asset Discovery
+    specification: a run is created PENDING, started RUNNING, and ends
+    COMPLETED, FAILED or PARTIAL. Terminal states are final.
+    """
+
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    PARTIAL = "PARTIAL"

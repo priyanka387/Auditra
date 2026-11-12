@@ -1,31 +1,48 @@
+from datetime import datetime
 from math import ceil
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi import APIRouter, Body, Depends, Query, Request, Response
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.db import get_db
-from app.modules.asset_discovery.enums import DiscoverySourceStatus, DiscoverySourceType
-from app.modules.asset_discovery.errors import InvalidDiscoverySourceQueryError
+from app.modules.asset_discovery.enums import (
+    DiscoveryRunStatus,
+    DiscoverySourceStatus,
+    DiscoverySourceType,
+)
+from app.modules.asset_discovery.errors import (
+    InvalidDiscoveryRunQueryError,
+    InvalidDiscoverySourceQueryError,
+)
 from app.modules.asset_discovery.schemas import (
+    DiscoveryRunCreate,
+    DiscoveryRunFilter,
+    DiscoveryRunListResponse,
+    DiscoveryRunResponse,
     DiscoverySourceCreate,
     DiscoverySourceFilter,
     DiscoverySourceListResponse,
     DiscoverySourceResponse,
     DiscoverySourceUpdate,
 )
-from app.modules.asset_discovery.service import DiscoverySourceService
+from app.modules.asset_discovery.service import DiscoveryRunService, DiscoverySourceService
 
 router = APIRouter(prefix="/api/v1/discovery/sources")
+runs_router = APIRouter(prefix="/api/v1/discovery/runs")
 
 
 def _service(request: Request, db: Session) -> DiscoverySourceService:
     return DiscoverySourceService(
         db, settings.default_tenant_id, request_id=request.state.request_id, actor=None
     )
+
+
+def _run_service(request: Request, db: Session) -> DiscoveryRunService:
+    return DiscoveryRunService(db, settings.default_tenant_id, request_id=request.state.request_id)
 
 
 def _build(**kwargs) -> DiscoverySourceFilter:
@@ -36,8 +53,20 @@ def _build(**kwargs) -> DiscoverySourceFilter:
         raise InvalidDiscoverySourceQueryError(message) from None
 
 
+def _build_run(**kwargs) -> DiscoveryRunFilter:
+    try:
+        return DiscoveryRunFilter(**kwargs)
+    except ValidationError as exc:
+        message = exc.errors()[0].get("msg", "invalid query") if exc.errors() else "invalid query"
+        raise InvalidDiscoveryRunQueryError(message) from None
+
+
 def _response(source) -> DiscoverySourceResponse:
     return DiscoverySourceResponse.model_validate(source, from_attributes=True)
+
+
+def _run_response(run) -> DiscoveryRunResponse:
+    return DiscoveryRunResponse.model_validate(run, from_attributes=True)
 
 
 @router.post("", status_code=201, response_model=DiscoverySourceResponse)
@@ -109,3 +138,57 @@ def delete_source(
 ) -> Response:
     _service(request, db).delete(source_id)
     return Response(status_code=204)
+
+
+@router.post("/{source_id}/runs", status_code=201, response_model=DiscoveryRunResponse)
+def create_run(
+    source_id: UUID,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    # empty body for now: exists so unexpected fields (e.g. attempts to
+    # force an initial status) are rejected
+    payload: Annotated[DiscoveryRunCreate | None, Body()] = None,
+) -> DiscoveryRunResponse:
+    return _run_response(_run_service(request, db).create(source_id))
+
+
+@runs_router.get("", response_model=DiscoveryRunListResponse)
+def list_runs(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 25,
+    source_id: UUID | None = None,
+    status: DiscoveryRunStatus | None = None,
+    started_from: datetime | None = None,
+    started_to: datetime | None = None,
+    sort_by: str = "started_at",
+    sort_order: str = "desc",
+) -> DiscoveryRunListResponse:
+    filters = _build_run(
+        page=page,
+        page_size=page_size,
+        source_id=source_id,
+        status=status,
+        started_from=started_from,
+        started_to=started_to,
+        sort_by=sort_by,
+        sort_order=sort_order,
+    )
+    items, total = _run_service(request, db).list(filters)
+    return DiscoveryRunListResponse(
+        items=[_run_response(item) for item in items],
+        page=page,
+        page_size=page_size,
+        total=total,
+        total_pages=ceil(total / page_size) if total else 0,
+    )
+
+
+@runs_router.get("/{run_id}", response_model=DiscoveryRunResponse)
+def get_run(
+    run_id: UUID,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+) -> DiscoveryRunResponse:
+    return _run_response(_run_service(request, db).get(run_id))
