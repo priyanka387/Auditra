@@ -8,14 +8,20 @@ from sqlalchemy.orm import Session
 
 from app.modules.asset_discovery import repository
 from app.modules.asset_discovery.config_validation import validate_source_config
-from app.modules.asset_discovery.enums import DiscoverySourceStatus
+from app.modules.asset_discovery.enums import DiscoveryRunStatus, DiscoverySourceStatus
 from app.modules.asset_discovery.errors import (
+    DiscoveryRunError,
+    DiscoveryRunNotFoundError,
     DiscoverySourceArchivedError,
     DiscoverySourceNotFoundError,
     DuplicateDiscoverySourceError,
+    InvalidDiscoveryRunCountsError,
+    InvalidDiscoveryRunTransitionError,
 )
-from app.modules.asset_discovery.models import DiscoverySource
+from app.modules.asset_discovery.models import DiscoveryRun, DiscoverySource
+from app.modules.asset_discovery.run_lifecycle import RUN_INITIAL_STATUS, can_run_transition
 from app.modules.asset_discovery.schemas import (
+    DiscoveryRunFilter,
     DiscoverySourceCreate,
     DiscoverySourceFilter,
     DiscoverySourceUpdate,
@@ -161,6 +167,175 @@ class DiscoverySourceService:
                 "source_type": source.source_type,
                 "status": source.status,
                 "changed_fields": changed,
+                "request_id": self.request_id,
+            },
+        )
+
+
+class DiscoveryRunService:
+    """Tracks discovery executions against discovery sources.
+
+    Creating a run records the attempt only — it never performs a scan.
+    The transition methods (start/complete/fail/partial) are the
+    foundation the future Asset Discovery sub-feature drives while
+    executing a run.
+    """
+
+    def __init__(
+        self,
+        db: Session,
+        tenant_id: UUID,
+        request_id: str | None = None,
+    ) -> None:
+        self.db = db
+        self.tenant_id = tenant_id
+        self.request_id = request_id
+
+    def create(self, source_id: UUID) -> DiscoveryRun:
+        if repository.get_source(self.db, self.tenant_id, source_id) is None:
+            raise DiscoverySourceNotFoundError(f"discovery source '{source_id}' not found")
+
+        run = repository.create_run(
+            self.db,
+            id=uuid4(),
+            tenant_id=self.tenant_id,
+            source_id=source_id,
+            status=RUN_INITIAL_STATUS.value,
+        )
+        repository.commit_run(self.db, source_id)
+        self._log("discovery run created", run)
+        return run
+
+    def get(self, run_id: UUID) -> DiscoveryRun:
+        return self._entity(run_id)
+
+    def list(self, filters: DiscoveryRunFilter) -> tuple[list[DiscoveryRun], int]:
+        return repository.list_runs(self.db, self.tenant_id, filters)
+
+    def start(self, run_id: UUID) -> DiscoveryRun:
+        run = self._entity(run_id)
+        self._transition(run, DiscoveryRunStatus.RUNNING)
+        run.started_at = datetime.now(UTC)
+        self.db.commit()
+        self._log("discovery run started", run)
+        return run
+
+    def complete(
+        self,
+        run_id: UUID,
+        *,
+        assets_detected: int = 0,
+        assets_created: int = 0,
+        assets_updated: int = 0,
+        assets_unchanged: int = 0,
+    ) -> DiscoveryRun:
+        run = self._entity(run_id)
+        self._validate_counts(assets_detected, assets_created, assets_updated, assets_unchanged)
+        self._transition(run, DiscoveryRunStatus.COMPLETED)
+        run.completed_at = datetime.now(UTC)
+        run.assets_detected = assets_detected
+        run.assets_created = assets_created
+        run.assets_updated = assets_updated
+        run.assets_unchanged = assets_unchanged
+        self.db.commit()
+        self._log("discovery run completed", run)
+        return run
+
+    def fail(self, run_id: UUID, *, error_summary: str, error_count: int = 1) -> DiscoveryRun:
+        run = self._entity(run_id)
+        summary = self._validate_error_summary(error_summary)
+        self._validate_error_count(error_count)
+        self._transition(run, DiscoveryRunStatus.FAILED)
+        run.completed_at = datetime.now(UTC)
+        run.error_summary = summary
+        run.error_count = error_count
+        self.db.commit()
+        self._log("discovery run failed", run)
+        return run
+
+    def partial(
+        self,
+        run_id: UUID,
+        *,
+        assets_detected: int = 0,
+        assets_created: int = 0,
+        assets_updated: int = 0,
+        assets_unchanged: int = 0,
+        error_summary: str,
+        error_count: int = 1,
+    ) -> DiscoveryRun:
+        run = self._entity(run_id)
+        summary = self._validate_error_summary(error_summary)
+        self._validate_error_count(error_count)
+        self._validate_counts(assets_detected, assets_created, assets_updated, assets_unchanged)
+        self._transition(run, DiscoveryRunStatus.PARTIAL)
+        run.completed_at = datetime.now(UTC)
+        run.assets_detected = assets_detected
+        run.assets_created = assets_created
+        run.assets_updated = assets_updated
+        run.assets_unchanged = assets_unchanged
+        run.error_summary = summary
+        run.error_count = error_count
+        self.db.commit()
+        self._log("discovery run partially completed", run)
+        return run
+
+    def _transition(self, run: DiscoveryRun, target: DiscoveryRunStatus) -> None:
+        if not can_run_transition(run.status, target.value):
+            raise InvalidDiscoveryRunTransitionError(
+                f"discovery run '{run.id}' cannot transition from {run.status} to {target.value}"
+            )
+        run.status = target.value
+
+    @staticmethod
+    def _validate_counts(
+        assets_detected: int,
+        assets_created: int,
+        assets_updated: int,
+        assets_unchanged: int,
+    ) -> None:
+        counts = {
+            "assets_detected": assets_detected,
+            "assets_created": assets_created,
+            "assets_updated": assets_updated,
+            "assets_unchanged": assets_unchanged,
+        }
+        for name, value in counts.items():
+            if value < 0:
+                raise InvalidDiscoveryRunCountsError(f"{name} must be non-negative")
+        if assets_created + assets_updated + assets_unchanged > assets_detected:
+            raise InvalidDiscoveryRunCountsError(
+                "asset outcome counts cannot exceed assets detected"
+            )
+
+    @staticmethod
+    def _validate_error_count(error_count: int) -> None:
+        if error_count < 0:
+            raise InvalidDiscoveryRunCountsError("error_count must be non-negative")
+
+    @staticmethod
+    def _validate_error_summary(error_summary: str) -> str:
+        summary = (error_summary or "").strip()
+        if not summary:
+            raise DiscoveryRunError("error summary must not be empty")
+        return summary
+
+    def _entity(self, run_id: UUID) -> DiscoveryRun:
+        run = repository.get_run(self.db, self.tenant_id, run_id)
+        if run is None:
+            raise DiscoveryRunNotFoundError(f"discovery run '{run_id}' not found")
+        return run
+
+    def _log(self, message: str, run: DiscoveryRun) -> None:
+        logger.info(
+            message,
+            extra={
+                "discovery_run_id": str(run.id),
+                "discovery_source_id": str(run.source_id),
+                "tenant_id": str(self.tenant_id),
+                "status": run.status,
+                "assets_detected": run.assets_detected,
+                "error_count": run.error_count,
                 "request_id": self.request_id,
             },
         )

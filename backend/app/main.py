@@ -12,6 +12,7 @@ from app.core.errors import (
     validation_error_handler,
 )
 from app.modules.asset_discovery.routes import router as discovery_source_router
+from app.modules.asset_discovery.routes import runs_router as discovery_runs_router
 from app.modules.audit.routes import router as audit_router
 from app.modules.model_discovery.routes import router as model_discovery_router
 from app.modules.model_inventory.api import (
@@ -101,6 +102,7 @@ def create_app() -> FastAPI:
     app.include_router(model_usage_router)
     app.include_router(model_discovery_router)
     app.include_router(discovery_source_router)
+    app.include_router(discovery_runs_router)
     app.include_router(audit_router)
     return app
 
