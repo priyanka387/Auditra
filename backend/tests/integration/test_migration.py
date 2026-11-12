@@ -239,3 +239,37 @@ def test_discovery_sources_migration_downgrade_and_upgrade(database):
         assert sa.inspect(engine).has_table("discovery_sources")
     finally:
         engine.dispose()
+
+
+def test_discovery_runs_migration_downgrade_and_upgrade(database):
+    cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    engine = sa.create_engine(settings.database_url, poolclass=sa.pool.NullPool)
+    try:
+        insp = sa.inspect(engine)
+        assert insp.has_table("discovery_runs")
+        indexes = {i["name"] for i in insp.get_indexes("discovery_runs")}
+        for name in (
+            "ix_discovery_runs_tenant_source_started_at",
+            "ix_discovery_runs_tenant_status",
+            "ix_discovery_runs_tenant_started_at",
+        ):
+            assert name in indexes, name
+        fks = insp.get_foreign_keys("discovery_runs")
+        assert any(
+            fk["referred_table"] == "discovery_sources"
+            and fk["options"].get("ondelete") == "RESTRICT"
+            for fk in fks
+        )
+        checks = {c["name"] for c in insp.get_check_constraints("discovery_runs")}
+        assert "ck_discovery_runs_status" in checks
+        assert "ck_discovery_runs_counts_non_negative" in checks
+        assert "ck_discovery_runs_asset_counts" in checks
+        try:
+            command.downgrade(cfg, "0008")
+            assert not sa.inspect(engine).has_table("discovery_runs")
+            assert sa.inspect(engine).has_table("discovery_sources")
+        finally:
+            command.upgrade(cfg, "head")
+        assert sa.inspect(engine).has_table("discovery_runs")
+    finally:
+        engine.dispose()
