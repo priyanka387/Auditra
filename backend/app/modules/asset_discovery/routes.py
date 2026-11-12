@@ -18,8 +18,17 @@ from app.modules.asset_discovery.errors import (
     InvalidDiscoveryRunQueryError,
     InvalidDiscoverySourceQueryError,
 )
+from app.modules.asset_discovery.execution import (
+    DiscoveryExecutionResult,
+    DiscoveryExecutionService,
+)
 from app.modules.asset_discovery.schemas import (
+    DiscoveryExecutionIssueResponse,
+    DiscoveryExecutionResponse,
+    DiscoveryExecutionSourceResponse,
+    DiscoveryObservationResponse,
     DiscoveryRunCreate,
+    DiscoveryRunExecuteRequest,
     DiscoveryRunFilter,
     DiscoveryRunListResponse,
     DiscoveryRunResponse,
@@ -45,6 +54,12 @@ def _run_service(request: Request, db: Session) -> DiscoveryRunService:
     return DiscoveryRunService(db, settings.default_tenant_id, request_id=request.state.request_id)
 
 
+def _execution_service(request: Request, db: Session) -> DiscoveryExecutionService:
+    return DiscoveryExecutionService(
+        db, settings.default_tenant_id, request_id=request.state.request_id
+    )
+
+
 def _build(**kwargs) -> DiscoverySourceFilter:
     try:
         return DiscoverySourceFilter(**kwargs)
@@ -67,6 +82,41 @@ def _response(source) -> DiscoverySourceResponse:
 
 def _run_response(run) -> DiscoveryRunResponse:
     return DiscoveryRunResponse.model_validate(run, from_attributes=True)
+
+
+def _execution_response(result: DiscoveryExecutionResult) -> DiscoveryExecutionResponse:
+    return DiscoveryExecutionResponse(
+        source=DiscoveryExecutionSourceResponse(
+            id=result.source.id,
+            name=result.source.name,
+            source_type=result.source.source_type,
+        ),
+        run=_run_response(result.run),
+        status=result.run.status,
+        connector=result.connector,
+        files_scanned=result.files_scanned,
+        observation_count=len(result.observations),
+        observations=[
+            DiscoveryObservationResponse(
+                observation_type=observation.observation_type,
+                name=observation.name,
+                provider=observation.provider,
+                file_path=observation.file_path,
+                line_number=observation.line_number,
+                detection_rule=observation.detection_rule,
+                metadata=observation.metadata,
+            )
+            for observation in result.observations
+        ],
+        errors=[
+            DiscoveryExecutionIssueResponse(
+                file_path=issue.file_path,
+                reason=issue.reason,
+                message=issue.message,
+            )
+            for issue in result.issues
+        ],
+    )
 
 
 @router.post("", status_code=201, response_model=DiscoverySourceResponse)
@@ -150,6 +200,22 @@ def create_run(
     payload: Annotated[DiscoveryRunCreate | None, Body()] = None,
 ) -> DiscoveryRunResponse:
     return _run_response(_run_service(request, db).create(source_id))
+
+
+@runs_router.post("/{run_id}/execute", status_code=200, response_model=DiscoveryExecutionResponse)
+def execute_run(
+    run_id: UUID,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    payload: Annotated[DiscoveryRunExecuteRequest | None, Body()] = None,
+) -> DiscoveryExecutionResponse:
+    """Synchronously execute discovery for a PENDING run.
+
+    Transitions the run PENDING -> RUNNING -> COMPLETED | PARTIAL (or
+    FAILED via the error envelope) and returns the structured result:
+    source, run, observation count, observations and recoverable errors.
+    """
+    return _execution_response(_execution_service(request, db).execute(run_id))
 
 
 @runs_router.get("", response_model=DiscoveryRunListResponse)

@@ -111,6 +111,16 @@ class DiscoveryRunCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class DiscoveryRunExecuteRequest(BaseModel):
+    """Execute-run request body.
+
+    Execution takes no parameters; the empty body exists so unexpected
+    fields (e.g. attempts to inject scan options) are rejected.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class DiscoveryRunResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -165,3 +175,54 @@ class DiscoveryRunFilter(BaseModel):
         if value is not None and value.tzinfo is None:
             raise ValueError("timestamp must be timezone-aware")
         return value
+
+
+class DiscoveryObservationResponse(BaseModel):
+    """One raw observation detected during execution.
+
+    An intermediate discovery result, not a persisted DiscoveredAsset;
+    ``file_path`` is source-relative and file contents are never returned.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    observation_type: str
+    name: str
+    provider: str | None = None
+    file_path: str
+    line_number: int | None = None
+    detection_rule: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class DiscoveryExecutionIssueResponse(BaseModel):
+    """A recoverable problem encountered while scanning."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    file_path: str | None = None
+    reason: str
+    message: str
+
+
+class DiscoveryExecutionSourceResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    name: str
+    source_type: DiscoverySourceType
+
+
+class DiscoveryExecutionResponse(BaseModel):
+    """Result of executing a discovery run against its source."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: DiscoveryExecutionSourceResponse
+    run: DiscoveryRunResponse
+    status: DiscoveryRunStatus
+    connector: str
+    files_scanned: int = Field(ge=0)
+    observation_count: int = Field(ge=0)
+    observations: list[DiscoveryObservationResponse]
+    errors: list[DiscoveryExecutionIssueResponse]
