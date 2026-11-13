@@ -10,12 +10,11 @@ from sqlalchemy.orm import Session
 from app.modules.asset_discovery import repository
 from app.modules.asset_discovery.catalog import (
     MAX_NAME_LENGTH,
-    asset_type_for_observation,
     build_asset_metadata,
     build_normalized_identity,
     has_secret_shaped_value,
-    normalize_asset_name,
 )
+from app.modules.asset_discovery.classification import classify
 from app.modules.asset_discovery.config_validation import validate_source_config
 from app.modules.asset_discovery.connectors.base import DiscoveryObservation
 from app.modules.asset_discovery.enums import (
@@ -433,14 +432,20 @@ class DiscoveredAssetService:
     def record_observation(
         self, observation: DiscoveryObservation
     ) -> tuple[DiscoveredAsset | None, ObservationOutcome]:
-        """Validate one observation and create or refresh its catalog entry."""
-        name = normalize_asset_name(observation.name)
+        """Classify one observation and create or refresh its catalog entry.
+
+        Classification (Sub-feature 5) deterministically decides the
+        asset type, normalized name and normalized metadata before the
+        catalog identity is built; unknown observation types raise
+        instead of being guessed.
+        """
+        classification = classify(observation)
+        name = classification.name
         if not name:
             raise InvalidDiscoveredAssetError("observation name must not be empty")
 
-        asset_type = asset_type_for_observation(observation.observation_type)
-        identity = build_normalized_identity(asset_type, name)
-        metadata = build_asset_metadata(observation)
+        identity = build_normalized_identity(classification.asset_type, name)
+        metadata = build_asset_metadata(observation, classification)
 
         # content guards: hostile or pathological input is dropped from
         # the catalog instead of failing the whole discovery run
@@ -458,7 +463,7 @@ class DiscoveredAssetService:
         )
         if existing is not None:
             return self._refresh(existing, observation, metadata)
-        return self._create(observation, name, asset_type.value, identity, metadata)
+        return self._create(observation, name, classification.asset_type.value, identity, metadata)
 
     def get(self, asset_id: UUID) -> DiscoveredAsset:
         asset = repository.get_discovered_asset(self.db, self.tenant_id, asset_id)

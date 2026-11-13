@@ -1,27 +1,25 @@
-"""Discovered Asset Catalog domain logic (Sub-feature 4).
+"""Discovered Asset Catalog domain logic.
 
 Pure functions that turn a raw discovery observation into the catalog
-representation: deterministic identity, asset-type mapping, validated
-metadata and secret-shaped value guards. No database access lives here
-(persistence orchestration is ``DiscoveredAssetService``).
+representation: deterministic identity, validated metadata and
+secret-shaped value guards. No database access lives here (persistence
+orchestration is ``DiscoveredAssetService``).
 
-This layer is deliberately minimal. Asset classification semantics and
-metadata normalization belong to Asset Classification & Metadata
-(Sub-feature 5); deciding whether two observations describe the same
-real-world asset belongs to Asset Deduplication (Sub-feature 6).
+Classification semantics and metadata normalization live in
+``classification`` (Sub-feature 5); its result is merged into the
+persisted payload by ``build_asset_metadata``. Deciding whether two
+observations describe the same real-world asset belongs to Asset
+Deduplication (Sub-feature 6).
 """
 
 import re
 from typing import Any
 
-from app.modules.asset_discovery.connectors.base import (
-    AGENT_REFERENCE,
-    FRAMEWORK_REFERENCE,
-    MODEL_REFERENCE,
-    PROVIDER_REFERENCE,
-    WORKFLOW_REFERENCE,
-    DiscoveryObservation,
+from app.modules.asset_discovery.classification import (
+    ClassificationResult,
+    normalize_asset_name,
 )
+from app.modules.asset_discovery.connectors.base import DiscoveryObservation
 from app.modules.asset_discovery.enums import AssetType
 from app.modules.asset_discovery.errors import InvalidDiscoveredAssetError
 from app.modules.model_inventory.schemas.model import SECRET_KEY_RE, validate_metadata
@@ -30,18 +28,6 @@ MAX_NAME_LENGTH = 255
 MAX_IDENTITY_LENGTH = 1024
 MAX_FILE_PATH_LENGTH = 1024
 MAX_LINE_NUMBER = 10_000_000
-
-# Minimal deterministic mapping from a detection rule's observation type
-# to a catalog asset type. Detection rules and this table are updated
-# together; an unknown observation type is a programming error and
-# raises instead of guessing. Rich classification is Sub-feature 5.
-ASSET_TYPE_BY_OBSERVATION: dict[str, AssetType] = {
-    MODEL_REFERENCE: AssetType.MODEL_REFERENCE,
-    PROVIDER_REFERENCE: AssetType.AI_SERVICE,
-    FRAMEWORK_REFERENCE: AssetType.TOOL,
-    AGENT_REFERENCE: AssetType.AGENT,
-    WORKFLOW_REFERENCE: AssetType.WORKFLOW,
-}
 
 # Credential-shaped values (sk-..., ghp_..., AKIA..., ...) surfaced as a
 # name or rule-generated metadata value are never persisted. Matching is
@@ -56,25 +42,6 @@ _CREDENTIAL_VALUE_RE = re.compile(
 # observation metadata keys that never carry credential-shaped content
 # (they are structural values produced by the connector itself)
 _STRUCTURAL_METADATA_KEYS = frozenset({"file_path", "detection_rule", "observation_type"})
-
-
-def asset_type_for_observation(observation_type: str) -> AssetType:
-    """Map an observation type to its catalog asset type.
-
-    Raises InvalidDiscoveredAssetError for observation types no rule
-    table knows about — the catalog never guesses a type.
-    """
-    asset_type = ASSET_TYPE_BY_OBSERVATION.get(observation_type)
-    if asset_type is None:
-        raise InvalidDiscoveredAssetError(
-            f"unsupported observation type '{observation_type}'"
-        )
-    return asset_type
-
-
-def normalize_asset_name(raw: str) -> str:
-    """Deterministic display/identity name: trimmed, whitespace collapsed."""
-    return " ".join((raw or "").split())
 
 
 def build_normalized_identity(asset_type: AssetType | str, name: str) -> str:
@@ -116,22 +83,34 @@ def validate_file_path(file_path: str) -> str:
     return file_path
 
 
-def build_asset_metadata(observation: DiscoveryObservation) -> dict[str, Any]:
+def build_asset_metadata(
+    observation: DiscoveryObservation,
+    classification: ClassificationResult | None = None,
+) -> dict[str, Any]:
     """Validated, secret-free metadata persisted for one observation.
 
-    Deliberately shallow: structural fields (rule, path, location) plus
-    the rule-generated extras. Normalizing or enriching this payload is
-    Sub-feature 5's responsibility.
+    Merges three layers: the rule-generated extras, the normalized
+    classification extras (Sub-feature 5) and the structural fields
+    (rule, path, location) which always win. Classification extras win
+    over the raw value of the same signal because they are that signal
+    normalized. ``classification_rule`` records which rule decided the
+    asset type so the stored asset stays explainable.
     """
+    classification_metadata = dict(classification.metadata) if classification else {}
     metadata: dict[str, Any] = {
-        # rule-generated extras first so structural keys below always win
+        # rule-generated extras first, classification normalization
+        # second, structural keys below always win
         **(observation.metadata or {}),
+        **classification_metadata,
         "observation_type": observation.observation_type,
         "file_path": validate_file_path(observation.file_path),
         "detection_rule": observation.detection_rule,
     }
-    if observation.provider:
-        metadata["provider"] = observation.provider
+    if classification is not None:
+        metadata["classification_rule"] = classification.rule_id
+    provider = classification_metadata.get("provider") or observation.provider
+    if provider:
+        metadata["provider"] = provider
     if observation.line_number is not None:
         if (
             isinstance(observation.line_number, bool)
