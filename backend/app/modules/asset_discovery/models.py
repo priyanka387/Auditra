@@ -162,9 +162,33 @@ class DiscoveredAsset(Base):
             "normalized_identity",
             name="uq_discovered_assets_source_identity",
         ),
+        # reconciliation state vocabulary follows master spec §8; the
+        # reason vocabulary is the deterministic rule that decided the
+        # outcome (see reconciliation.py) — a MATCHED row always carries
+        # its canonical model and vice versa
+        CheckConstraint(
+            "reconciliation_status IN ('UNMATCHED', 'MATCHED', 'AMBIGUOUS', 'IGNORED')",
+            name="ck_discovered_assets_reconciliation_status",
+        ),
+        CheckConstraint(
+            "reconciliation_reason IS NULL OR reconciliation_reason IN ("
+            "'provider_and_model_identifier', 'model_identifier', "
+            "'normalized_model_identity', 'multiple_model_identifier_matches', "
+            "'multiple_normalized_identity_matches', 'no_canonical_model_match')",
+            name="ck_discovered_assets_reconciliation_reason",
+        ),
+        CheckConstraint(
+            "(reconciliation_status = 'MATCHED') = (reconciled_model_id IS NOT NULL)",
+            name="ck_discovered_assets_reconciled_model",
+        ),
         Index("ix_discovered_assets_tenant_source", "tenant_id", "source_id"),
         Index("ix_discovered_assets_tenant_asset_type", "tenant_id", "asset_type"),
         Index("ix_discovered_assets_tenant_status", "tenant_id", "status"),
+        Index(
+            "ix_discovered_assets_tenant_reconciliation_status",
+            "tenant_id",
+            "reconciliation_status",
+        ),
         Index("ix_discovered_assets_tenant_last_seen_at", "tenant_id", desc("last_seen_at")),
     )
 
@@ -189,6 +213,21 @@ class DiscoveredAsset(Base):
         JSON().with_variant(JSONB, "postgresql"),
         default=dict,
         server_default=text("'{}'"),
+    )
+
+    # Asset Reconciliation (Sub-feature 7): link to the canonical Model
+    # Inventory entity when a deterministic identity match exists. The
+    # discovery-side row stays an observation — only the canonical model
+    # id, the outcome status and the deciding rule's reason are stored;
+    # default 'UNMATCHED' keeps every pre-existing row representable as
+    # unreconciled. MATCHED <-> reconciled_model_id is enforced by
+    # ck_discovered_assets_reconciled_model.
+    reconciliation_status: Mapped[str] = mapped_column(
+        String(32), default="UNMATCHED", server_default=text("'UNMATCHED'")
+    )
+    reconciliation_reason: Mapped[str | None] = mapped_column(String(64))
+    reconciled_model_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("models.id", ondelete="RESTRICT")
     )
 
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
