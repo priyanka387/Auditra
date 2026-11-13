@@ -472,6 +472,15 @@ class DiscoveredAssetService:
             raise DiscoveredAssetNotFoundError(f"discovered asset '{asset_id}' not found")
         return asset
 
+    def observed_run_ids(self, asset_id: UUID) -> list[UUID]:
+        """Discovery runs that observed this asset, oldest first.
+
+        Run-link history survives ``last_seen_run_id`` advancing, so an
+        asset seen in Run 1, 2 and 3 keeps all three run references.
+        """
+        self.get(asset_id)  # tenant-scoped existence check (404 when unknown)
+        return repository.list_asset_run_ids(self.db, self.tenant_id, asset_id)
+
     def list(self, filters: DiscoveredAssetFilter) -> tuple[list[DiscoveredAsset], int]:
         return repository.list_discovered_assets(self.db, self.tenant_id, filters)
 
@@ -521,6 +530,14 @@ class DiscoveredAssetService:
             if raced is None:
                 raise
             return self._refresh(raced, observation, metadata)
+        # asset row already committed, so the link insert cannot mask a
+        # duplicate-identity race
+        repository.record_asset_run(
+            self.db,
+            discovered_asset_id=asset.id,
+            discovery_run_id=observation.run_id,
+            observed_at=now,
+        )
         self._log("discovered asset created", asset, ObservationOutcome.CREATED)
         return asset, ObservationOutcome.CREATED
 
@@ -540,8 +557,15 @@ class DiscoveredAssetService:
         asset.last_seen_at = datetime.now(UTC)
         asset.last_seen_run_id = observation.run_id
         # refreshing never touches identity columns, so no constraint can
-        # fire here
-        self.db.commit()
+        # fire here; the upsert's db.execute autoflushes the pending
+        # metadata/timestamp updates and its commit persists everything
+        # in one transaction (link row keeps its original first_observed_at)
+        repository.record_asset_run(
+            self.db,
+            discovered_asset_id=asset.id,
+            discovery_run_id=observation.run_id,
+            observed_at=asset.last_seen_at,
+        )
         outcome = ObservationOutcome.UPDATED if changed else ObservationOutcome.UNCHANGED
         self._log("discovered asset observed", asset, outcome)
         return asset, outcome

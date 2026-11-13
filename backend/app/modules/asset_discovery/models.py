@@ -198,3 +198,40 @@ class DiscoveredAsset(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class DiscoveredAssetRun(Base):
+    """Link recording that one discovery run observed one discovered asset.
+
+    Rows are historical traceability: they are never mutated in place, so
+    an asset seen in Run 1, Run 2 and Run 3 keeps all three links even as
+    ``DiscoveredAsset.last_seen_run_id`` advances. Evidence content itself
+    belongs to Discovery Evidence (Sub-feature 9).
+    """
+
+    __tablename__ = "discovered_asset_runs"
+    __table_args__ = (
+        Index(
+            "uq_discovered_asset_runs_asset_run",
+            "discovered_asset_id",
+            "discovery_run_id",
+            unique=True,
+        ),
+        Index("ix_discovered_asset_runs_tenant_run", "tenant_id", "discovery_run_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID] = mapped_column()
+    discovered_asset_id: Mapped[UUID] = mapped_column(
+        ForeignKey("discovered_assets.id", ondelete="RESTRICT")
+    )
+    discovery_run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("discovery_runs.id", ondelete="RESTRICT")
+    )
+
+    first_observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

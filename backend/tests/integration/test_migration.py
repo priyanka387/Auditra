@@ -316,3 +316,29 @@ def test_discovered_assets_migration_downgrade_and_upgrade(database):
         assert sa.inspect(engine).has_table("discovered_assets")
     finally:
         engine.dispose()
+
+
+def test_discovered_asset_runs_migration_downgrade_and_upgrade(database):
+    cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    engine = sa.create_engine(settings.database_url, poolclass=sa.pool.NullPool)
+    try:
+        insp = sa.inspect(engine)
+        assert insp.has_table("discovered_asset_runs")
+        indexes = {i["name"]: i for i in insp.get_indexes("discovered_asset_runs")}
+        unique = indexes.get("uq_discovered_asset_runs_asset_run")
+        assert unique is not None and unique["unique"] is True
+        assert unique["column_names"] == ["discovered_asset_id", "discovery_run_id"]
+        assert "ix_discovered_asset_runs_tenant_run" in indexes
+        fks = {fk["referred_table"]: fk for fk in insp.get_foreign_keys("discovered_asset_runs")}
+        assert set(fks) == {"discovered_assets", "discovery_runs"}
+        assert all(fk["options"].get("ondelete") == "RESTRICT" for fk in fks.values())
+        try:
+            command.downgrade(cfg, "0010")
+            insp = sa.inspect(engine)
+            assert not insp.has_table("discovered_asset_runs")
+            assert insp.has_table("discovered_assets")
+        finally:
+            command.upgrade(cfg, "head")
+        assert sa.inspect(engine).has_table("discovered_asset_runs")
+    finally:
+        engine.dispose()
