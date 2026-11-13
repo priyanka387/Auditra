@@ -8,8 +8,8 @@ orchestration is ``DiscoveredAssetService``).
 Classification semantics and metadata normalization live in
 ``classification`` (Sub-feature 5); its result is merged into the
 persisted payload by ``build_asset_metadata``. Deciding whether two
-observations describe the same real-world asset belongs to Asset
-Deduplication (Sub-feature 6).
+observations describe the same real-world asset is implemented in
+``deduplication`` (Sub-feature 6).
 """
 
 import re
@@ -48,10 +48,11 @@ def build_normalized_identity(asset_type: AssetType | str, name: str) -> str:
     """Deterministic identity of an asset within one discovery source.
 
     Format: ``<asset_type>|<normalized name>``. Names keep their case —
-    case-folding would pre-empt the deduplication rules Sub-feature 6
-    owns. Uniqueness is enforced per (tenant, source) at the database
-    level, so observations from different sources never collide here and
-    cross-source reconciliation keeps room to relate them later.
+    case-folding would pre-empt the deduplication rules in
+    ``deduplication`` (Sub-feature 6). Uniqueness is enforced per
+    (tenant, source) at the database level, so observations from
+    different sources never collide here and cross-source reconciliation
+    keeps room to relate them later.
     """
     try:
         kind = AssetType(asset_type).value
@@ -77,9 +78,7 @@ def validate_file_path(file_path: str) -> str:
             "observation file_path must be relative to the source root"
         )
     if any(part == ".." for part in file_path.split("/")):
-        raise InvalidDiscoveredAssetError(
-            "observation file_path must not escape the source root"
-        )
+        raise InvalidDiscoveredAssetError("observation file_path must not escape the source root")
     return file_path
 
 
@@ -139,6 +138,5 @@ def has_secret_shaped_value(name: str, observation: DiscoveryObservation) -> boo
         return True
     values = [observation.provider, *(observation.metadata or {}).values()]
     return any(
-        isinstance(value, str) and bool(_CREDENTIAL_VALUE_RE.match(value))
-        for value in values
+        isinstance(value, str) and bool(_CREDENTIAL_VALUE_RE.match(value)) for value in values
     )

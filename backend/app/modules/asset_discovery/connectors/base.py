@@ -1,8 +1,9 @@
 """Discovery connector abstraction.
 
 Connectors inspect a configured discovery source and return raw
-observations. Classification, normalization, persistence, deduplication,
-reconciliation and evidence belong to later sub-features.
+observations. Classification, normalization, persistence and
+deduplication are handled downstream by the catalog; reconciliation and
+evidence belong to later sub-features.
 
 The dataclasses below are intentionally minimal intermediate results —
 they are NOT the future ``DiscoveredAsset`` entity.

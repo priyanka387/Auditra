@@ -132,10 +132,11 @@ class DiscoveredAsset(Base):
 
     A discovered asset is an *observation*, not a canonical Auditra
     inventory entity: mapping it to e.g. a Model Inventory record is
-    owned by Asset Reconciliation (Sub-feature 5). Identity is scoped
+    owned by Asset Reconciliation (Sub-feature 7). Identity is scoped
     to the discovery source it was observed from so the same asset seen
-    from another source stays a separate entry until cross-source
-    deduplication/reconciliation (Sub-features 6/7) relates them.
+    from another source stays a separate entry: deduplication
+    (Sub-feature 6) preserves source boundaries, and reconciliation
+    (Sub-feature 7) is what later relates such entries.
 
     ``last_seen_run_id`` records the discovery execution that last
     observed the asset; full per-observation evidence belongs to

@@ -11,12 +11,15 @@ from app.modules.asset_discovery import repository
 from app.modules.asset_discovery.catalog import (
     MAX_NAME_LENGTH,
     build_asset_metadata,
-    build_normalized_identity,
     has_secret_shaped_value,
 )
 from app.modules.asset_discovery.classification import classify
 from app.modules.asset_discovery.config_validation import validate_source_config
 from app.modules.asset_discovery.connectors.base import DiscoveryObservation
+from app.modules.asset_discovery.deduplication import (
+    AssetDeduplicationService,
+    merge_metadata,
+)
 from app.modules.asset_discovery.enums import (
     DiscoveredAssetStatus,
     DiscoveryRunStatus,
@@ -382,10 +385,11 @@ class DiscoveredAssetService:
     preserving ``first_seen_at`` — so scanning an unchanged source never
     creates duplicates.
 
-    This is catalog-level identity only ("can this observation
-    correspond to a stored asset?"). Deciding whether observations from
-    different sources describe the same real-world asset belongs to
-    Asset Deduplication / Reconciliation (Sub-features 6/7).
+    Identity resolution, duplicate detection and metadata merging are
+    delegated to ``deduplication`` (Sub-feature 6): exact deterministic
+    identity within one source, never fuzzy or cross-source matching.
+    Relating observations across sources to canonical entities belongs
+    to Asset Reconciliation (Sub-feature 7).
     """
 
     def __init__(
@@ -397,14 +401,13 @@ class DiscoveredAssetService:
         self.db = db
         self.tenant_id = tenant_id
         self.request_id = request_id
+        self.dedup = AssetDeduplicationService(db, tenant_id, request_id=request_id)
         # source/run references verified once per service instance so a
         # large batch does not repeat tenant-scoped existence checks
         self._verified_sources: set[UUID] = set()
         self._verified_runs: set[UUID] = set()
 
-    def record_observations(
-        self, observations: Sequence[DiscoveryObservation]
-    ) -> CatalogSummary:
+    def record_observations(self, observations: Sequence[DiscoveryObservation]) -> CatalogSummary:
         counts = dict.fromkeys(ObservationOutcome, 0)
         for observation in observations:
             _, outcome = self.record_observation(observation)
@@ -444,7 +447,7 @@ class DiscoveredAssetService:
         if not name:
             raise InvalidDiscoveredAssetError("observation name must not be empty")
 
-        identity = build_normalized_identity(classification.asset_type, name)
+        key = self.dedup.build_key(observation.source_id, classification)
         metadata = build_asset_metadata(observation, classification)
 
         # content guards: hostile or pathological input is dropped from
@@ -458,12 +461,10 @@ class DiscoveredAssetService:
 
         self._verify_references(observation)
 
-        existing = repository.find_asset_by_identity(
-            self.db, self.tenant_id, observation.source_id, identity
-        )
+        existing = self.dedup.find_duplicate(key)
         if existing is not None:
             return self._refresh(existing, observation, metadata)
-        return self._create(observation, name, classification.asset_type.value, identity, metadata)
+        return self._create(observation, name, key.asset_type, key.normalized_identity, metadata)
 
     def get(self, asset_id: UUID) -> DiscoveredAsset:
         asset = repository.get_discovered_asset(self.db, self.tenant_id, asset_id)
@@ -478,9 +479,7 @@ class DiscoveredAssetService:
         source_id = observation.source_id
         if source_id not in self._verified_sources:
             if repository.get_source(self.db, self.tenant_id, source_id) is None:
-                raise DiscoverySourceNotFoundError(
-                    f"discovery source '{source_id}' not found"
-                )
+                raise DiscoverySourceNotFoundError(f"discovery source '{source_id}' not found")
             self._verified_sources.add(source_id)
         run_id = observation.run_id
         if run_id not in self._verified_runs:
@@ -532,10 +531,10 @@ class DiscoveredAssetService:
         metadata: dict,
     ) -> tuple[DiscoveredAsset, ObservationOutcome]:
         # first-seen values win: re-scanning an unchanged source must not
-        # churn metadata, while genuinely new keys are still captured
+        # churn metadata, while empty stored values are still filled in
+        # and genuinely new keys are captured (deduplication.merge_metadata)
         existing_metadata = asset.metadata_ or {}
-        merged = {**metadata, **existing_metadata}
-        changed = merged != existing_metadata
+        merged, changed = merge_metadata(existing_metadata, metadata)
         if changed:
             asset.metadata_ = merged
         asset.last_seen_at = datetime.now(UTC)
@@ -547,9 +546,7 @@ class DiscoveredAssetService:
         self._log("discovered asset observed", asset, outcome)
         return asset, outcome
 
-    def _log(
-        self, message: str, asset: DiscoveredAsset, outcome: ObservationOutcome
-    ) -> None:
+    def _log(self, message: str, asset: DiscoveredAsset, outcome: ObservationOutcome) -> None:
         logger.info(
             message,
             extra={
