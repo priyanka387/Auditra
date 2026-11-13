@@ -16,16 +16,17 @@ import re
 from dataclasses import dataclass, field
 from uuid import UUID
 
-from app.modules.asset_discovery.connectors.base import DiscoveryObservation
+from app.modules.asset_discovery.connectors.base import (
+    AGENT_REFERENCE,
+    FRAMEWORK_REFERENCE,
+    MODEL_REFERENCE,
+    PROVIDER_REFERENCE,
+    WORKFLOW_REFERENCE,
+    DiscoveryObservation,
+)
 
 MAX_MODEL_ID_LENGTH = 128
 MAX_LINE_LENGTH = 10_000
-
-PROVIDER_REFERENCE = "provider_reference"
-FRAMEWORK_REFERENCE = "framework_reference"
-MODEL_REFERENCE = "model_reference"
-AGENT_REFERENCE = "agent_reference"
-WORKFLOW_REFERENCE = "workflow_reference"
 
 # provider id -> detection context. Values are regex fragments.
 _PROVIDERS: dict[str, dict[str, tuple[str, ...]]] = {

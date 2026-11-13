@@ -84,3 +84,32 @@ class DiscoveryConnectorUnsupportedError(DiscoveryExecutionError):
 
     code = "DISCOVERY_CONNECTOR_UNSUPPORTED"
     http_status = 422
+
+
+class DiscoveredAssetError(DomainError):
+    """Base error for Discovered Asset Catalog operations."""
+
+    code = "DISCOVERED_ASSET_ERROR"
+    http_status = 400
+
+
+class DiscoveredAssetNotFoundError(DiscoveredAssetError):
+    code = "DISCOVERED_ASSET_NOT_FOUND"
+    http_status = 404
+
+
+class InvalidDiscoveredAssetError(DiscoveredAssetError):
+    """An observation cannot be represented as a catalog asset."""
+
+    code = "DISCOVERED_ASSET_INVALID"
+    http_status = 422
+
+
+class DuplicateDiscoveredAssetError(DiscoveredAssetError):
+    code = "DISCOVERED_ASSET_DUPLICATE"
+    http_status = 409
+
+
+class InvalidDiscoveredAssetQueryError(DiscoveredAssetError):
+    code = "DISCOVERED_ASSET_QUERY_INVALID"
+    http_status = 400

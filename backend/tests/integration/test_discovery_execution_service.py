@@ -82,7 +82,10 @@ def test_successful_discovery_completes_run_and_collects_observations(db, repo):
     assert fetched.started_at is not None
     assert fetched.completed_at is not None
     assert fetched.assets_detected == len(result.observations)
-    assert fetched.assets_created == 0
+    # Sub-feature 4: execution persists observations into the catalog
+    assert fetched.assets_created == len(result.observations)
+    assert fetched.assets_updated == 0
+    assert fetched.assets_unchanged == 0
     assert fetched.error_count == 0
     assert fetched.error_summary is None
 

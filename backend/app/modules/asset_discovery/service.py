@@ -1,5 +1,6 @@
 import logging
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -7,20 +8,38 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.modules.asset_discovery import repository
+from app.modules.asset_discovery.catalog import (
+    MAX_NAME_LENGTH,
+    asset_type_for_observation,
+    build_asset_metadata,
+    build_normalized_identity,
+    has_secret_shaped_value,
+    normalize_asset_name,
+)
 from app.modules.asset_discovery.config_validation import validate_source_config
-from app.modules.asset_discovery.enums import DiscoveryRunStatus, DiscoverySourceStatus
+from app.modules.asset_discovery.connectors.base import DiscoveryObservation
+from app.modules.asset_discovery.enums import (
+    DiscoveredAssetStatus,
+    DiscoveryRunStatus,
+    DiscoverySourceStatus,
+    ObservationOutcome,
+)
 from app.modules.asset_discovery.errors import (
+    DiscoveredAssetNotFoundError,
     DiscoveryRunError,
     DiscoveryRunNotFoundError,
     DiscoverySourceArchivedError,
     DiscoverySourceNotFoundError,
+    DuplicateDiscoveredAssetError,
     DuplicateDiscoverySourceError,
+    InvalidDiscoveredAssetError,
     InvalidDiscoveryRunCountsError,
     InvalidDiscoveryRunTransitionError,
 )
-from app.modules.asset_discovery.models import DiscoveryRun, DiscoverySource
+from app.modules.asset_discovery.models import DiscoveredAsset, DiscoveryRun, DiscoverySource
 from app.modules.asset_discovery.run_lifecycle import RUN_INITIAL_STATUS, can_run_transition
 from app.modules.asset_discovery.schemas import (
+    DiscoveredAssetFilter,
     DiscoveryRunFilter,
     DiscoverySourceCreate,
     DiscoverySourceFilter,
@@ -177,8 +196,7 @@ class DiscoveryRunService:
 
     Creating a run records the attempt only — it never performs a scan.
     The transition methods (start/complete/fail/partial) are the
-    foundation the future Asset Discovery sub-feature drives while
-    executing a run.
+    foundation Asset Discovery execution drives while executing a run.
     """
 
     def __init__(
@@ -336,6 +354,219 @@ class DiscoveryRunService:
                 "status": run.status,
                 "assets_detected": run.assets_detected,
                 "error_count": run.error_count,
+                "request_id": self.request_id,
+            },
+        )
+
+
+@dataclass(frozen=True)
+class CatalogSummary:
+    """Outcome counts for one batch of observations recorded in the catalog."""
+
+    created: int = 0
+    updated: int = 0
+    unchanged: int = 0
+    skipped: int = 0
+
+    @property
+    def recorded(self) -> int:
+        """Observations that ended up represented in the catalog."""
+        return self.created + self.updated + self.unchanged
+
+
+class DiscoveredAssetService:
+    """Turns discovery observations into persistent catalog entries.
+
+    One observation maps to at most one catalog asset per source: an
+    unknown identity creates an asset, a known identity refreshes
+    ``last_seen_at`` (and captures newly seen metadata keys) while
+    preserving ``first_seen_at`` — so scanning an unchanged source never
+    creates duplicates.
+
+    This is catalog-level identity only ("can this observation
+    correspond to a stored asset?"). Deciding whether observations from
+    different sources describe the same real-world asset belongs to
+    Asset Deduplication / Reconciliation (Sub-features 6/7).
+    """
+
+    def __init__(
+        self,
+        db: Session,
+        tenant_id: UUID,
+        request_id: str | None = None,
+    ) -> None:
+        self.db = db
+        self.tenant_id = tenant_id
+        self.request_id = request_id
+        # source/run references verified once per service instance so a
+        # large batch does not repeat tenant-scoped existence checks
+        self._verified_sources: set[UUID] = set()
+        self._verified_runs: set[UUID] = set()
+
+    def record_observations(
+        self, observations: Sequence[DiscoveryObservation]
+    ) -> CatalogSummary:
+        counts = dict.fromkeys(ObservationOutcome, 0)
+        for observation in observations:
+            _, outcome = self.record_observation(observation)
+            counts[outcome] += 1
+        summary = CatalogSummary(
+            created=counts[ObservationOutcome.CREATED],
+            updated=counts[ObservationOutcome.UPDATED],
+            unchanged=counts[ObservationOutcome.UNCHANGED],
+            skipped=counts[ObservationOutcome.SKIPPED],
+        )
+        logger.info(
+            "discovery observations recorded",
+            extra={
+                "tenant_id": str(self.tenant_id),
+                "observation_count": len(observations),
+                "assets_created": summary.created,
+                "assets_updated": summary.updated,
+                "assets_unchanged": summary.unchanged,
+                "assets_skipped": summary.skipped,
+                "request_id": self.request_id,
+            },
+        )
+        return summary
+
+    def record_observation(
+        self, observation: DiscoveryObservation
+    ) -> tuple[DiscoveredAsset | None, ObservationOutcome]:
+        """Validate one observation and create or refresh its catalog entry."""
+        name = normalize_asset_name(observation.name)
+        if not name:
+            raise InvalidDiscoveredAssetError("observation name must not be empty")
+
+        asset_type = asset_type_for_observation(observation.observation_type)
+        identity = build_normalized_identity(asset_type, name)
+        metadata = build_asset_metadata(observation)
+
+        # content guards: hostile or pathological input is dropped from
+        # the catalog instead of failing the whole discovery run
+        if len(name) > MAX_NAME_LENGTH:
+            self._log_skip(observation, "name_too_long")
+            return None, ObservationOutcome.SKIPPED
+        if has_secret_shaped_value(name, observation):
+            self._log_skip(observation, "secret_shaped_value")
+            return None, ObservationOutcome.SKIPPED
+
+        self._verify_references(observation)
+
+        existing = repository.find_asset_by_identity(
+            self.db, self.tenant_id, observation.source_id, identity
+        )
+        if existing is not None:
+            return self._refresh(existing, observation, metadata)
+        return self._create(observation, name, asset_type.value, identity, metadata)
+
+    def get(self, asset_id: UUID) -> DiscoveredAsset:
+        asset = repository.get_discovered_asset(self.db, self.tenant_id, asset_id)
+        if asset is None:
+            raise DiscoveredAssetNotFoundError(f"discovered asset '{asset_id}' not found")
+        return asset
+
+    def list(self, filters: DiscoveredAssetFilter) -> tuple[list[DiscoveredAsset], int]:
+        return repository.list_discovered_assets(self.db, self.tenant_id, filters)
+
+    def _verify_references(self, observation: DiscoveryObservation) -> None:
+        source_id = observation.source_id
+        if source_id not in self._verified_sources:
+            if repository.get_source(self.db, self.tenant_id, source_id) is None:
+                raise DiscoverySourceNotFoundError(
+                    f"discovery source '{source_id}' not found"
+                )
+            self._verified_sources.add(source_id)
+        run_id = observation.run_id
+        if run_id not in self._verified_runs:
+            if repository.get_run(self.db, self.tenant_id, run_id) is None:
+                raise DiscoveryRunNotFoundError(f"discovery run '{run_id}' not found")
+            self._verified_runs.add(run_id)
+
+    def _create(
+        self,
+        observation: DiscoveryObservation,
+        name: str,
+        asset_type: str,
+        identity: str,
+        metadata: dict,
+    ) -> tuple[DiscoveredAsset, ObservationOutcome]:
+        now = datetime.now(UTC)
+        asset = repository.create_discovered_asset(
+            self.db,
+            id=uuid4(),
+            tenant_id=self.tenant_id,
+            source_id=observation.source_id,
+            last_seen_run_id=observation.run_id,
+            asset_type=asset_type,
+            name=name,
+            normalized_identity=identity,
+            status=DiscoveredAssetStatus.ACTIVE.value,
+            metadata_=metadata,
+            first_seen_at=now,
+            last_seen_at=now,
+        )
+        try:
+            repository.commit_asset(self.db)
+        except DuplicateDiscoveredAssetError:
+            # a concurrent run stored the same identity first: observe it
+            # instead of failing (mirrors DiscoveryService.ingest)
+            raced = repository.find_asset_by_identity(
+                self.db, self.tenant_id, observation.source_id, identity
+            )
+            if raced is None:
+                raise
+            return self._refresh(raced, observation, metadata)
+        self._log("discovered asset created", asset, ObservationOutcome.CREATED)
+        return asset, ObservationOutcome.CREATED
+
+    def _refresh(
+        self,
+        asset: DiscoveredAsset,
+        observation: DiscoveryObservation,
+        metadata: dict,
+    ) -> tuple[DiscoveredAsset, ObservationOutcome]:
+        # first-seen values win: re-scanning an unchanged source must not
+        # churn metadata, while genuinely new keys are still captured
+        existing_metadata = asset.metadata_ or {}
+        merged = {**metadata, **existing_metadata}
+        changed = merged != existing_metadata
+        if changed:
+            asset.metadata_ = merged
+        asset.last_seen_at = datetime.now(UTC)
+        asset.last_seen_run_id = observation.run_id
+        # refreshing never touches identity columns, so no constraint can
+        # fire here
+        self.db.commit()
+        outcome = ObservationOutcome.UPDATED if changed else ObservationOutcome.UNCHANGED
+        self._log("discovered asset observed", asset, outcome)
+        return asset, outcome
+
+    def _log(
+        self, message: str, asset: DiscoveredAsset, outcome: ObservationOutcome
+    ) -> None:
+        logger.info(
+            message,
+            extra={
+                "discovered_asset_id": str(asset.id),
+                "tenant_id": str(self.tenant_id),
+                "discovery_source_id": str(asset.source_id),
+                "discovery_run_id": str(asset.last_seen_run_id),
+                "asset_type": asset.asset_type,
+                "outcome": outcome.value,
+                "request_id": self.request_id,
+            },
+        )
+
+    def _log_skip(self, observation: DiscoveryObservation, reason: str) -> None:
+        logger.warning(
+            "discovery observation skipped by catalog guard",
+            extra={
+                "tenant_id": str(self.tenant_id),
+                "discovery_source_id": str(observation.source_id),
+                "discovery_run_id": str(observation.run_id),
+                "observation_type": observation.observation_type,
+                "skip_reason": reason,
                 "request_id": self.request_id,
             },
         )

@@ -273,3 +273,46 @@ def test_discovery_runs_migration_downgrade_and_upgrade(database):
         assert sa.inspect(engine).has_table("discovery_runs")
     finally:
         engine.dispose()
+
+
+def test_discovered_assets_migration_downgrade_and_upgrade(database):
+    cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    engine = sa.create_engine(settings.database_url, poolclass=sa.pool.NullPool)
+    try:
+        insp = sa.inspect(engine)
+        assert insp.has_table("discovered_assets")
+        indexes = {i["name"] for i in insp.get_indexes("discovered_assets")}
+        for name in (
+            "ix_discovered_assets_tenant_source",
+            "ix_discovered_assets_tenant_asset_type",
+            "ix_discovered_assets_tenant_status",
+            "ix_discovered_assets_tenant_last_seen_at",
+        ):
+            assert name in indexes, name
+        unique = {c["name"]: c for c in insp.get_unique_constraints("discovered_assets")}
+        identity = unique.get("uq_discovered_assets_source_identity")
+        assert identity is not None
+        assert identity["column_names"] == ["tenant_id", "source_id", "normalized_identity"]
+        fks = insp.get_foreign_keys("discovered_assets")
+        assert any(
+            fk["referred_table"] == "discovery_sources"
+            and fk["options"].get("ondelete") == "RESTRICT"
+            for fk in fks
+        )
+        assert any(
+            fk["referred_table"] == "discovery_runs"
+            and fk["options"].get("ondelete") == "RESTRICT"
+            for fk in fks
+        )
+        checks = {c["name"] for c in insp.get_check_constraints("discovered_assets")}
+        assert "ck_discovered_assets_asset_type" in checks
+        assert "ck_discovered_assets_status" in checks
+        try:
+            command.downgrade(cfg, "0009")
+            assert not sa.inspect(engine).has_table("discovered_assets")
+            assert sa.inspect(engine).has_table("discovery_runs")
+        finally:
+            command.upgrade(cfg, "head")
+        assert sa.inspect(engine).has_table("discovered_assets")
+    finally:
+        engine.dispose()

@@ -31,3 +31,45 @@ class DiscoveryRunStatus(str, Enum):
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
     PARTIAL = "PARTIAL"
+
+
+class AssetType(str, Enum):
+    """What a discovered asset represents.
+
+    Initial types follow the master Asset Discovery specification. The
+    enum (and its database check constraint) extend with additional
+    types later without changing the catalog model; classification
+    itself is owned by Asset Classification & Metadata (Sub-feature 5).
+    """
+
+    MODEL = "MODEL"
+    MODEL_REFERENCE = "MODEL_REFERENCE"
+    APPLICATION = "APPLICATION"
+    AGENT = "AGENT"
+    WORKFLOW = "WORKFLOW"
+    DATASET = "DATASET"
+    TOOL = "TOOL"
+    DEPLOYMENT = "DEPLOYMENT"
+    ENDPOINT = "ENDPOINT"
+    AI_SERVICE = "AI_SERVICE"
+
+
+class DiscoveredAssetStatus(str, Enum):
+    """Basic catalog status.
+
+    Only the initial ACTIVE state exists for the catalog. Lifecycle
+    transitions (STALE, DISAPPEARED, IGNORED, ...) belong to Asset
+    Lifecycle (Sub-feature 8) and will extend this enum plus the status
+    check constraint; the catalog never performs lifecycle transitions.
+    """
+
+    ACTIVE = "ACTIVE"
+
+
+class ObservationOutcome(str, Enum):
+    """Result of recording one discovery observation in the catalog."""
+
+    CREATED = "CREATED"  # new catalog asset
+    UPDATED = "UPDATED"  # existing asset gained new metadata
+    UNCHANGED = "UNCHANGED"  # existing asset re-observed, timestamps refreshed
+    SKIPPED = "SKIPPED"  # deliberately not persisted (e.g. secret-shaped)

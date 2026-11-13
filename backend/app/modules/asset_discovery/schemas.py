@@ -2,9 +2,11 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 from app.modules.asset_discovery.enums import (
+    AssetType,
+    DiscoveredAssetStatus,
     DiscoveryRunStatus,
     DiscoverySourceStatus,
     DiscoverySourceType,
@@ -226,3 +228,57 @@ class DiscoveryExecutionResponse(BaseModel):
     observation_count: int = Field(ge=0)
     observations: list[DiscoveryObservationResponse]
     errors: list[DiscoveryExecutionIssueResponse]
+
+
+class DiscoveredAssetResponse(BaseModel):
+    """One persisted discovered asset — an observation, not a canonical entity.
+
+    Exposes catalog state only: never file contents, raw repository
+    data or credentials.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    tenant_id: UUID
+    source_id: UUID
+    last_seen_run_id: UUID | None = None
+    asset_type: AssetType
+    name: str
+    normalized_identity: str
+    status: DiscoveredAssetStatus
+    metadata: dict[str, Any] = Field(
+        default_factory=dict, validation_alias=AliasChoices("metadata_", "metadata")
+    )
+    first_seen_at: datetime
+    last_seen_at: datetime
+    created_at: datetime
+    updated_at: datetime
+
+    @field_validator("first_seen_at", "last_seen_at", "created_at", "updated_at", mode="before")
+    @classmethod
+    def _require_timezone(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.tzinfo is None:
+            raise ValueError("timestamp must be timezone-aware")
+        return value
+
+
+class DiscoveredAssetListResponse(BaseModel):
+    items: list[DiscoveredAssetResponse]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+
+
+class DiscoveredAssetFilter(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    page: int = Field(default=1, ge=1)
+    page_size: int = Field(default=25, ge=1, le=100)
+    asset_type: AssetType | None = None
+    source_id: UUID | None = None
+    status: DiscoveredAssetStatus | None = None
+    search: str | None = Field(default=None, max_length=255)
+    sort_by: str = "last_seen_at"
+    sort_order: str = "desc"
