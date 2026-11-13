@@ -4,14 +4,15 @@ Orchestrates the flow defined by the master specification:
 
 ```text
 Discovery Source -> Run (PENDING) -> RUNNING -> connector scan
-    -> COMPLETED | PARTIAL | FAILED
+    -> Discovered Asset Catalog -> COMPLETED | PARTIAL | FAILED
 ```
 
 Run state transitions are delegated to the existing
-``DiscoveryRunService`` (Sub-feature 2) — never duplicated here. Fatal
-errors (invalid configuration, unreachable location, unsupported
-connector) fail the run and surface as domain errors; recoverable
-per-file issues complete the run as PARTIAL.
+``DiscoveryRunService`` (Sub-feature 2) — never duplicated here — and
+observations are persisted by ``DiscoveredAssetService`` (Sub-feature
+4). Fatal errors (invalid configuration, unreachable location,
+unsupported connector, catalog validation) fail the run and surface as
+domain errors; recoverable per-file issues complete the run as PARTIAL.
 """
 
 import logging
@@ -37,7 +38,11 @@ from app.modules.asset_discovery.errors import (
     DiscoverySourceNotFoundError,
 )
 from app.modules.asset_discovery.models import DiscoveryRun, DiscoverySource
-from app.modules.asset_discovery.service import DiscoveryRunService
+from app.modules.asset_discovery.service import (
+    CatalogSummary,
+    DiscoveredAssetService,
+    DiscoveryRunService,
+)
 from app.modules.model_inventory.domain.errors import DomainError
 
 logger = logging.getLogger("auditra.asset_discovery")
@@ -47,9 +52,10 @@ logger = logging.getLogger("auditra.asset_discovery")
 class DiscoveryExecutionResult:
     """Structured outcome of executing one discovery run.
 
-    Observations are intermediate results (not persisted assets) and
-    issues are recoverable per-file problems; file contents are never
-    included.
+    Observations are the raw connector results and issues are
+    recoverable per-file problems; file contents are never included.
+    ``catalog`` reports how those observations mapped to persisted
+    Discovered Assets.
     """
 
     source: DiscoverySource
@@ -58,6 +64,7 @@ class DiscoveryExecutionResult:
     files_scanned: int
     observations: tuple[DiscoveryObservation, ...]
     issues: tuple[ConnectorIssue, ...]
+    catalog: CatalogSummary
 
 
 def _issue_summary(issues: Sequence[ConnectorIssue]) -> str:
@@ -86,6 +93,7 @@ class DiscoveryExecutionService:
         self.tenant_id = tenant_id
         self.request_id = request_id
         self.runs = DiscoveryRunService(db, tenant_id, request_id=request_id)
+        self.catalog = DiscoveredAssetService(db, tenant_id, request_id=request_id)
 
     def execute(self, run_id: UUID) -> DiscoveryExecutionResult:
         run = self.runs.get(run_id)  # tenant-scoped; 404 when missing
@@ -123,15 +131,54 @@ class DiscoveryExecutionService:
             self.runs.fail(run_id, error_summary="unexpected error during discovery")
             raise DiscoveryExecutionError("discovery failed unexpectedly") from None
 
+        # persist observations into the Discovered Asset Catalog before
+        # the run reports its outcome; a catalog failure fails the run
+        # (the scan can be re-run — identity makes it idempotent)
+        try:
+            catalog = self.catalog.record_observations(result.observations)
+        except DomainError as exc:
+            self.runs.fail(
+                run_id, error_summary=f"catalog persistence failed: {exc.code}"
+            )
+            self._log_finished(
+                source,
+                run,
+                connector=result.connector,
+                files_scanned=result.files_scanned,
+                issue_count=len(result.issues),
+                started=started,
+                observation_count=len(result.observations),
+                error_code=exc.code,
+            )
+            raise
+        except Exception:
+            logger.exception(
+                "catalog persistence raised unexpectedly",
+                extra=self._log_context(source, run),
+            )
+            self.runs.fail(
+                run_id, error_summary="unexpected error persisting discovered assets"
+            )
+            raise DiscoveryExecutionError("discovery failed unexpectedly") from None
+
         if result.issues:
             self.runs.partial(
                 run_id,
                 assets_detected=len(result.observations),
+                assets_created=catalog.created,
+                assets_updated=catalog.updated,
+                assets_unchanged=catalog.unchanged,
                 error_summary=_issue_summary(result.issues),
                 error_count=len(result.issues),
             )
         else:
-            self.runs.complete(run_id, assets_detected=len(result.observations))
+            self.runs.complete(
+                run_id,
+                assets_detected=len(result.observations),
+                assets_created=catalog.created,
+                assets_updated=catalog.updated,
+                assets_unchanged=catalog.unchanged,
+            )
 
         self._log_finished(
             source,
@@ -149,6 +196,7 @@ class DiscoveryExecutionService:
             files_scanned=result.files_scanned,
             observations=result.observations,
             issues=result.issues,
+            catalog=catalog,
         )
 
     @staticmethod

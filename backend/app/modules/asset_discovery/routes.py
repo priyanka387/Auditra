@@ -10,11 +10,14 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.db import get_db
 from app.modules.asset_discovery.enums import (
+    AssetType,
+    DiscoveredAssetStatus,
     DiscoveryRunStatus,
     DiscoverySourceStatus,
     DiscoverySourceType,
 )
 from app.modules.asset_discovery.errors import (
+    InvalidDiscoveredAssetQueryError,
     InvalidDiscoveryRunQueryError,
     InvalidDiscoverySourceQueryError,
 )
@@ -23,6 +26,9 @@ from app.modules.asset_discovery.execution import (
     DiscoveryExecutionService,
 )
 from app.modules.asset_discovery.schemas import (
+    DiscoveredAssetFilter,
+    DiscoveredAssetListResponse,
+    DiscoveredAssetResponse,
     DiscoveryExecutionIssueResponse,
     DiscoveryExecutionResponse,
     DiscoveryExecutionSourceResponse,
@@ -38,10 +44,15 @@ from app.modules.asset_discovery.schemas import (
     DiscoverySourceResponse,
     DiscoverySourceUpdate,
 )
-from app.modules.asset_discovery.service import DiscoveryRunService, DiscoverySourceService
+from app.modules.asset_discovery.service import (
+    DiscoveredAssetService,
+    DiscoveryRunService,
+    DiscoverySourceService,
+)
 
 router = APIRouter(prefix="/api/v1/discovery/sources")
 runs_router = APIRouter(prefix="/api/v1/discovery/runs")
+assets_router = APIRouter(prefix="/api/v1/discovery/assets")
 
 
 def _service(request: Request, db: Session) -> DiscoverySourceService:
@@ -76,12 +87,30 @@ def _build_run(**kwargs) -> DiscoveryRunFilter:
         raise InvalidDiscoveryRunQueryError(message) from None
 
 
+def _asset_service(request: Request, db: Session) -> DiscoveredAssetService:
+    return DiscoveredAssetService(
+        db, settings.default_tenant_id, request_id=request.state.request_id
+    )
+
+
+def _build_assets(**kwargs) -> DiscoveredAssetFilter:
+    try:
+        return DiscoveredAssetFilter(**kwargs)
+    except ValidationError as exc:
+        message = exc.errors()[0].get("msg", "invalid query") if exc.errors() else "invalid query"
+        raise InvalidDiscoveredAssetQueryError(message) from None
+
+
 def _response(source) -> DiscoverySourceResponse:
     return DiscoverySourceResponse.model_validate(source, from_attributes=True)
 
 
 def _run_response(run) -> DiscoveryRunResponse:
     return DiscoveryRunResponse.model_validate(run, from_attributes=True)
+
+
+def _asset_response(asset) -> DiscoveredAssetResponse:
+    return DiscoveredAssetResponse.model_validate(asset, from_attributes=True)
 
 
 def _execution_response(result: DiscoveryExecutionResult) -> DiscoveryExecutionResponse:
@@ -258,3 +287,46 @@ def get_run(
     db: Annotated[Session, Depends(get_db)],
 ) -> DiscoveryRunResponse:
     return _run_response(_run_service(request, db).get(run_id))
+
+
+@assets_router.get("", response_model=DiscoveredAssetListResponse)
+def list_discovered_assets(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 25,
+    asset_type: AssetType | None = None,
+    source_id: UUID | None = None,
+    status: DiscoveredAssetStatus | None = None,
+    search: str | None = None,
+    sort_by: str = "last_seen_at",
+    sort_order: str = "desc",
+) -> DiscoveredAssetListResponse:
+    """List discovered assets (catalog state only; read-only)."""
+    filters = _build_assets(
+        page=page,
+        page_size=page_size,
+        asset_type=asset_type,
+        source_id=source_id,
+        status=status,
+        search=search,
+        sort_by=sort_by,
+        sort_order=sort_order,
+    )
+    items, total = _asset_service(request, db).list(filters)
+    return DiscoveredAssetListResponse(
+        items=[_asset_response(item) for item in items],
+        page=page,
+        page_size=page_size,
+        total=total,
+        total_pages=ceil(total / page_size) if total else 0,
+    )
+
+
+@assets_router.get("/{asset_id}", response_model=DiscoveredAssetResponse)
+def get_discovered_asset(
+    asset_id: UUID,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+) -> DiscoveredAssetResponse:
+    return _asset_response(_asset_service(request, db).get(asset_id))

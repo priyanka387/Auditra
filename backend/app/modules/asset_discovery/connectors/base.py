@@ -15,6 +15,15 @@ from uuid import UUID
 
 from app.modules.asset_discovery.models import DiscoverySource
 
+# Stable observation types produced by detection rules. They are the
+# contract between connector rules and the Discovered Asset Catalog
+# (Sub-feature 4), which maps them to catalog asset types.
+PROVIDER_REFERENCE = "provider_reference"
+FRAMEWORK_REFERENCE = "framework_reference"
+MODEL_REFERENCE = "model_reference"
+AGENT_REFERENCE = "agent_reference"
+WORKFLOW_REFERENCE = "workflow_reference"
+
 
 @dataclass(frozen=True)
 class DiscoveryObservation:

@@ -10,6 +10,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     desc,
     func,
     text,
@@ -119,6 +120,78 @@ class DiscoveryRun(Base):
     assets_unchanged: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     error_count: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     error_summary: Mapped[str | None] = mapped_column(Text)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class DiscoveredAsset(Base):
+    """An AI-related asset observed by the discovery system.
+
+    A discovered asset is an *observation*, not a canonical Auditra
+    inventory entity: mapping it to e.g. a Model Inventory record is
+    owned by Asset Reconciliation (Sub-feature 5). Identity is scoped
+    to the discovery source it was observed from so the same asset seen
+    from another source stays a separate entry until cross-source
+    deduplication/reconciliation (Sub-features 6/7) relates them.
+
+    ``last_seen_run_id`` records the discovery execution that last
+    observed the asset; full per-observation evidence belongs to
+    Discovery Evidence (Sub-feature 9).
+    """
+
+    __tablename__ = "discovered_assets"
+    __table_args__ = (
+        CheckConstraint(
+            "asset_type IN ('MODEL', 'MODEL_REFERENCE', 'APPLICATION', 'AGENT', "
+            "'WORKFLOW', 'DATASET', 'TOOL', 'DEPLOYMENT', 'ENDPOINT', 'AI_SERVICE')",
+            name="ck_discovered_assets_asset_type",
+        ),
+        # minimal initial status only; lifecycle states arrive with
+        # Asset Lifecycle (Sub-feature 8) and extend this constraint
+        CheckConstraint(
+            "status IN ('ACTIVE')",
+            name="ck_discovered_assets_status",
+        ),
+        UniqueConstraint(
+            "tenant_id",
+            "source_id",
+            "normalized_identity",
+            name="uq_discovered_assets_source_identity",
+        ),
+        Index("ix_discovered_assets_tenant_source", "tenant_id", "source_id"),
+        Index("ix_discovered_assets_tenant_asset_type", "tenant_id", "asset_type"),
+        Index("ix_discovered_assets_tenant_status", "tenant_id", "status"),
+        Index("ix_discovered_assets_tenant_last_seen_at", "tenant_id", desc("last_seen_at")),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID] = mapped_column()
+    source_id: Mapped[UUID] = mapped_column(ForeignKey("discovery_sources.id", ondelete="RESTRICT"))
+    last_seen_run_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("discovery_runs.id", ondelete="RESTRICT")
+    )
+
+    asset_type: Mapped[str] = mapped_column(String(32))
+    name: Mapped[str] = mapped_column(String(255))
+    normalized_identity: Mapped[str] = mapped_column(String(1024))
+    status: Mapped[str] = mapped_column(
+        String(32), default="ACTIVE", server_default=text("'ACTIVE'")
+    )
+
+    # discovery-produced extras only (provider, framework, file path,
+    # detection rule, ...); secret-like keys are rejected before persist
+    metadata_: Mapped[dict] = mapped_column(
+        "metadata",
+        JSON().with_variant(JSONB, "postgresql"),
+        default=dict,
+        server_default=text("'{}'"),
+    )
+
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
