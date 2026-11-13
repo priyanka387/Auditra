@@ -18,6 +18,7 @@ from app.modules.asset_discovery.errors import (
     DiscoveredAssetNotFoundError,
     InvalidDiscoveredAssetError,
 )
+from app.modules.asset_discovery.execution import DiscoveryExecutionService
 from app.modules.asset_discovery.schemas import DiscoveredAssetFilter, DiscoverySourceCreate
 from app.modules.asset_discovery.service import (
     DiscoveredAssetService,
@@ -42,6 +43,14 @@ def source(db, tmp_path):
 @pytest.fixture
 def run(db, source):
     return DiscoveryRunService(db, TENANT).create(source.id)
+
+
+@pytest.fixture
+def repo(tmp_path):
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app" / "main.py").write_text('import openai\nmodel = "gpt-4o"\n', encoding="utf-8")
+    (tmp_path / "requirements.txt").write_text("langchain>=0.1.0\n", encoding="utf-8")
+    return tmp_path
 
 
 def _service(db, tenant_id=None) -> DiscoveredAssetService:
@@ -217,3 +226,126 @@ def test_batch_with_invalid_observation_persists_nothing(db, source, run):
     # the batch is validated before anything persists
     _, total = _service(db).list(DiscoveredAssetFilter())
     assert total == 0
+
+
+def _source(db, location, name="payments-service"):
+    return DiscoverySourceService(db, TENANT).create(
+        DiscoverySourceCreate(
+            name=name,
+            source_type=DiscoverySourceType.REPOSITORY,
+            config={"location": str(location)},
+        )
+    )
+
+
+def _run(db, source):
+    return DiscoveryRunService(db, TENANT).create(source.id)
+
+
+def _execute(db, source):
+    run = _run(db, source)
+    result = DiscoveryExecutionService(db, TENANT).execute(run.id)
+    return run, result
+
+
+def _refetch_run(db, run_id):
+    db.expunge_all()
+    return DiscoveryRunService(db, TENANT).get(run_id)
+
+
+def _catalog_ids(db):
+    items, _ = _service(db).list(DiscoveredAssetFilter())
+    return {asset.id for asset in items}
+
+
+def test_three_runs_against_unchanged_repo_yield_identical_catalog(db, repo):
+    source = _source(db, repo)
+    run1, first = _execute(db, source)
+    assert first.catalog.created == 3
+    assert first.catalog.updated == 0
+    assert first.catalog.unchanged == 0
+    fetched = _refetch_run(db, run1.id)
+    assert (fetched.assets_created, fetched.assets_updated, fetched.assets_unchanged) == (3, 0, 0)
+
+    ids_after_first = _catalog_ids(db)
+    first_seen = {
+        asset.id: asset.first_seen_at for asset in _service(db).list(DiscoveredAssetFilter())[0]
+    }
+
+    run2, second = _execute(db, source)
+    assert (second.catalog.created, second.catalog.updated, second.catalog.unchanged) == (0, 0, 3)
+    assert _catalog_ids(db) == ids_after_first
+    fetched = _refetch_run(db, run2.id)
+    assert (fetched.assets_created, fetched.assets_updated, fetched.assets_unchanged) == (0, 0, 3)
+
+    run3, third = _execute(db, source)
+    assert (third.catalog.created, third.catalog.updated, third.catalog.unchanged) == (0, 0, 3)
+    assert _catalog_ids(db) == ids_after_first
+    fetched = _refetch_run(db, run3.id)
+    assert (fetched.assets_created, fetched.assets_updated, fetched.assets_unchanged) == (0, 0, 3)
+
+    items, total = _service(db).list(DiscoveredAssetFilter())
+    assert total == len(ids_after_first) == 3
+    for asset in items:
+        assert asset.first_seen_at == first_seen[asset.id]  # creation time frozen at run 1
+        assert asset.last_seen_run_id == run3.id
+        assert _service(db).observed_run_ids(asset.id) == [run1.id, run2.id, run3.id]
+
+
+def test_same_path_and_name_in_two_sources_never_merges(db, source, run, tmp_path):
+    other = _source(db, tmp_path, name="billing-service")
+    other_run = DiscoveryRunService(db, TENANT).create(other.id)
+
+    first, _ = _service(db).record_observation(
+        _observation(source, run, file_path="app/llm.py", line_number=5)
+    )
+    second, _ = _service(db).record_observation(
+        _observation(other, other_run, file_path="app/llm.py", line_number=5)
+    )
+
+    assert first.id != second.id
+    assert first.normalized_identity == second.normalized_identity
+    assert _service(db).observed_run_ids(first.id) == [run.id]
+    assert _service(db).observed_run_ids(second.id) == [other_run.id]
+
+
+def test_cross_source_shared_identity_stays_separate(db, source, run, tmp_path):
+    other = _source(db, tmp_path, name="billing-service")
+    classification = classify(_observation(source, run))
+    dedup = AssetDeduplicationService(db, TENANT)
+
+    asset, _ = _service(db).record_observation(_observation(source, run))
+
+    # source B's identical classification key never matches source A's asset
+    assert dedup.find_duplicate(dedup.build_key(source.id, classification)).id == asset.id
+    assert dedup.find_duplicate(dedup.build_key(other.id, classification)) is None
+
+
+def test_similar_names_do_not_merge_in_one_source(db, source, run):
+    service = _service(db)
+    created = [
+        service.record_observation(_observation(source, run, name=name))[0]
+        for name in ("gpt-4o", "gpt-4o-mini", "GPT-4o")
+    ]
+
+    assert len({asset.id for asset in created}) == 3
+    _, total = service.list(DiscoveredAssetFilter())
+    assert total == 3
+
+
+def test_same_framework_in_two_sources_stays_separate(db, source, run, tmp_path):
+    other = _source(db, tmp_path, name="billing-service")
+    other_run = DiscoveryRunService(db, TENANT).create(other.id)
+    service = _service(db)
+
+    first, _ = service.record_observation(
+        _observation(source, run, name="langchain", observation_type="framework_reference")
+    )
+    second, _ = service.record_observation(
+        _observation(other, other_run, name="langchain", observation_type="framework_reference")
+    )
+
+    assert first.id != second.id
+    assert first.normalized_identity == second.normalized_identity == "TOOL|langchain"
+    _, total = service.list(DiscoveredAssetFilter())
+    assert total == 2
