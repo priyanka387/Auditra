@@ -107,9 +107,7 @@ def test_list_filters_by_asset_type_source_status_and_search(client, repo):
     by_source = client.get(ASSETS_API, params={"source_id": source_id}).json()
     assert by_source["total"] == 3
 
-    by_foreign_source = client.get(
-        ASSETS_API, params={"source_id": str(uuid4())}
-    ).json()
+    by_foreign_source = client.get(ASSETS_API, params={"source_id": str(uuid4())}).json()
     assert by_foreign_source["total"] == 0
 
     by_status = client.get(ASSETS_API, params={"status": "ACTIVE"}).json()
@@ -148,9 +146,7 @@ def test_get_by_id_returns_asset(client, repo):
 
 
 def test_get_unknown_asset_returns_404_envelope(client):
-    response = client.get(
-        f"{ASSETS_API}/{uuid4()}", headers={"X-Request-ID": "req-asset-404"}
-    )
+    response = client.get(f"{ASSETS_API}/{uuid4()}", headers={"X-Request-ID": "req-asset-404"})
     assert response.status_code == 404, response.text
     error = _error(response)
     assert error["code"] == "DISCOVERED_ASSET_NOT_FOUND"
@@ -201,6 +197,8 @@ def test_catalog_does_not_leak_secrets_or_file_contents(client, repo):
         "provider",
         "key",
         "framework",
+        "classification_rule",
+        "model_id",
     }
 
 
@@ -209,9 +207,7 @@ def test_catalog_survives_rerun_without_duplicates(client, repo):
     before = client.get(ASSETS_API).json()
 
     second_run = client.post(f"{SOURCES_API}/{source_id}/runs").json()
-    assert (
-        client.post(EXECUTE_API.format(run_id=second_run["id"])).status_code == 200
-    )
+    assert client.post(EXECUTE_API.format(run_id=second_run["id"])).status_code == 200
 
     after = client.get(ASSETS_API).json()
     assert after["total"] == before["total"] == 3

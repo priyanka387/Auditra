@@ -97,10 +97,7 @@ def test_rerun_against_unchanged_source_creates_no_duplicates(db, repo):
     source = _source(db, repo)
     first = _execute(db, _run(db, source))
     _, before_total = _assets(db)
-    first_seen = {
-        asset.id: asset.first_seen_at
-        for asset in _assets(db)[0]
-    }
+    first_seen = {asset.id: asset.first_seen_at for asset in _assets(db)[0]}
 
     second = _execute(db, _run(db, source))
 
@@ -120,9 +117,7 @@ def test_rerun_against_unchanged_source_creates_no_duplicates(db, repo):
     assert fetched_run.assets_created == 0
     assert fetched_run.assets_unchanged == len(second.observations)
     assert (
-        fetched_run.assets_created
-        + fetched_run.assets_updated
-        + fetched_run.assets_unchanged
+        fetched_run.assets_created + fetched_run.assets_updated + fetched_run.assets_unchanged
         == fetched_run.assets_detected
     )
 

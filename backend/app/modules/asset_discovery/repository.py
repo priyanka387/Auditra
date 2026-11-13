@@ -1,6 +1,9 @@
-from uuid import UUID
+from collections.abc import Sequence
+from datetime import datetime
+from uuid import UUID, uuid4
 
 from sqlalchemy import func, or_, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -14,6 +17,7 @@ from app.modules.asset_discovery.errors import (
 )
 from app.modules.asset_discovery.models import (
     DiscoveredAsset,
+    DiscoveredAssetRun,
     DiscoveryRun,
     DiscoverySource,
 )
@@ -189,9 +193,7 @@ def create_discovered_asset(db: Session, **fields) -> DiscoveredAsset:
     return asset
 
 
-def get_discovered_asset(
-    db: Session, tenant_id: UUID, asset_id: UUID
-) -> DiscoveredAsset | None:
+def get_discovered_asset(db: Session, tenant_id: UUID, asset_id: UUID) -> DiscoveredAsset | None:
     return db.scalar(
         select(DiscoveredAsset).where(
             DiscoveredAsset.tenant_id == tenant_id,
@@ -211,6 +213,26 @@ def find_asset_by_identity(
             DiscoveredAsset.normalized_identity == normalized_identity,
         )
     )
+
+
+def find_assets_by_identities(
+    db: Session, tenant_id: UUID, source_id: UUID, identities: Sequence[str]
+) -> dict[str, DiscoveredAsset]:
+    """Prefetch existing assets for a batch of identities within one source.
+
+    One indexed query per source instead of one lookup per observation;
+    identities unique to this call are simply absent from the result.
+    """
+    if not identities:
+        return {}
+    rows = db.scalars(
+        select(DiscoveredAsset).where(
+            DiscoveredAsset.tenant_id == tenant_id,
+            DiscoveredAsset.source_id == source_id,
+            DiscoveredAsset.normalized_identity.in_(identities),
+        )
+    )
+    return {asset.normalized_identity: asset for asset in rows}
 
 
 def _asset_conditions(tenant_id: UUID, filters: DiscoveredAssetFilter) -> list:
@@ -265,3 +287,68 @@ def commit_asset(db: Session) -> None:
         raise DuplicateDiscoveredAssetError(
             "discovered asset with this identity already exists"
         ) from None
+
+
+def record_asset_run(
+    db: Session,
+    *,
+    discovered_asset_id: UUID,
+    discovery_run_id: UUID,
+    observed_at: datetime,
+) -> None:
+    """Record that a run observed an asset; commit the surrounding work.
+
+    ``ON CONFLICT DO NOTHING`` keeps concurrent refreshes of the same
+    (asset, run) pair race-free, and an already-recorded link keeps its
+    original ``first_observed_at``: link rows are historical
+    traceability, never mutated in place.
+    """
+    tenant_id = db.scalar(
+        select(DiscoveredAsset.tenant_id).where(DiscoveredAsset.id == discovered_asset_id)
+    )
+    if tenant_id is None:
+        # the asset vanished between commit and link insert (concurrent
+        # deletion); there is no history to record
+        db.rollback()
+        return
+    stmt = (
+        pg_insert(DiscoveredAssetRun.__table__)
+        .values(
+            id=uuid4(),
+            tenant_id=tenant_id,
+            discovered_asset_id=discovered_asset_id,
+            discovery_run_id=discovery_run_id,
+            first_observed_at=observed_at,
+        )
+        .on_conflict_do_nothing(index_elements=["discovered_asset_id", "discovery_run_id"])
+    )
+    db.execute(stmt)
+    db.commit()
+
+
+def list_asset_run_ids(db: Session, tenant_id: UUID, asset_id: UUID) -> list[UUID]:
+    """Runs that observed an asset, oldest observation first."""
+    return list(
+        db.scalars(
+            select(DiscoveredAssetRun.discovery_run_id)
+            .where(
+                DiscoveredAssetRun.tenant_id == tenant_id,
+                DiscoveredAssetRun.discovered_asset_id == asset_id,
+            )
+            .order_by(DiscoveredAssetRun.first_observed_at, DiscoveredAssetRun.discovery_run_id)
+        )
+    )
+
+
+def list_run_asset_ids(db: Session, tenant_id: UUID, run_id: UUID) -> list[UUID]:
+    """Assets a run observed, ordered by asset id."""
+    return list(
+        db.scalars(
+            select(DiscoveredAssetRun.discovered_asset_id)
+            .where(
+                DiscoveredAssetRun.tenant_id == tenant_id,
+                DiscoveredAssetRun.discovery_run_id == run_id,
+            )
+            .order_by(DiscoveredAssetRun.discovered_asset_id)
+        )
+    )

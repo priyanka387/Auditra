@@ -75,6 +75,11 @@ _PROVIDERS: dict[str, dict[str, tuple[str, ...]]] = {
 }
 
 # framework id -> detection context. Values are regex fragments.
+# provider ids other layers can recognize in provider-qualified names
+# (e.g. "openai:gpt-4o"); the detection table stays the single source
+# of truth for which providers discovery knows
+PROVIDER_IDS: frozenset[str] = frozenset(_PROVIDERS)
+
 _FRAMEWORKS: dict[str, dict[str, tuple[str, ...]]] = {
     "langchain": {
         "py_modules": (r"langchain(?:[_.][a-z0-9]+)*",),

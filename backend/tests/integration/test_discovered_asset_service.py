@@ -91,6 +91,8 @@ def test_create_new_discovered_asset(db, source, run):
         "file_path": "app/llm.py",
         "detection_rule": "model.assignment",
         "line_number": 2,
+        "classification_rule": "type.model_reference",
+        "model_id": "gpt-4o",
     }
     assert _service(db).get(asset.id).id == asset.id
 
@@ -220,9 +222,7 @@ def test_secret_shaped_observation_is_skipped_not_persisted(db, source, run):
 
 
 def test_oversized_name_is_skipped_not_persisted(db, source, run):
-    asset, outcome = _service(db).record_observation(
-        _observation(source, run, name="a" * 300)
-    )
+    asset, outcome = _service(db).record_observation(_observation(source, run, name="a" * 300))
     assert outcome is ObservationOutcome.SKIPPED
     assert asset is None
     _, total = _service(db).list(DiscoveredAssetFilter())

@@ -10,14 +10,17 @@ from sqlalchemy.orm import Session
 from app.modules.asset_discovery import repository
 from app.modules.asset_discovery.catalog import (
     MAX_NAME_LENGTH,
-    asset_type_for_observation,
     build_asset_metadata,
-    build_normalized_identity,
     has_secret_shaped_value,
-    normalize_asset_name,
 )
+from app.modules.asset_discovery.classification import ClassificationResult, classify
 from app.modules.asset_discovery.config_validation import validate_source_config
 from app.modules.asset_discovery.connectors.base import DiscoveryObservation
+from app.modules.asset_discovery.deduplication import (
+    AssetDeduplicationService,
+    DeduplicationKey,
+    merge_metadata,
+)
 from app.modules.asset_discovery.enums import (
     DiscoveredAssetStatus,
     DiscoveryRunStatus,
@@ -374,6 +377,21 @@ class CatalogSummary:
         return self.created + self.updated + self.unchanged
 
 
+@dataclass
+class _Prepared:
+    """A validated observation with its identity resolution precomputed.
+
+    Preparing the whole batch up front keeps classification errors from
+    stranding a partially persisted batch (see ``record_observations``).
+    """
+
+    observation: DiscoveryObservation
+    classification: ClassificationResult
+    key: DeduplicationKey
+    metadata: dict
+    skip_reason: str | None = None
+
+
 class DiscoveredAssetService:
     """Turns discovery observations into persistent catalog entries.
 
@@ -383,10 +401,11 @@ class DiscoveredAssetService:
     preserving ``first_seen_at`` — so scanning an unchanged source never
     creates duplicates.
 
-    This is catalog-level identity only ("can this observation
-    correspond to a stored asset?"). Deciding whether observations from
-    different sources describe the same real-world asset belongs to
-    Asset Deduplication / Reconciliation (Sub-features 6/7).
+    Identity resolution, duplicate detection and metadata merging are
+    delegated to ``deduplication`` (Sub-feature 6): exact deterministic
+    identity within one source, never fuzzy or cross-source matching.
+    Relating observations across sources to canonical entities belongs
+    to Asset Reconciliation (Sub-feature 7).
     """
 
     def __init__(
@@ -398,17 +417,42 @@ class DiscoveredAssetService:
         self.db = db
         self.tenant_id = tenant_id
         self.request_id = request_id
+        self.dedup = AssetDeduplicationService(db, tenant_id, request_id=request_id)
         # source/run references verified once per service instance so a
         # large batch does not repeat tenant-scoped existence checks
         self._verified_sources: set[UUID] = set()
         self._verified_runs: set[UUID] = set()
 
-    def record_observations(
-        self, observations: Sequence[DiscoveryObservation]
-    ) -> CatalogSummary:
+    def record_observations(self, observations: Sequence[DiscoveryObservation]) -> CatalogSummary:
         counts = dict.fromkeys(ObservationOutcome, 0)
-        for observation in observations:
-            _, outcome = self.record_observation(observation)
+        # prepare the whole batch first: classification/name errors raise
+        # before anything persists, so an invalid observation can never
+        # leave a half-recorded batch behind
+        prepared = [self._prepare(observation) for observation in observations]
+
+        # prefetch existing matches once per distinct source instead of
+        # one identity lookup per observation (identities are scoped per
+        # source, so the prefetch is too)
+        known: dict[tuple[UUID, str], DiscoveredAsset] = {}
+        by_source: dict[UUID, set[str]] = {}
+        for item in prepared:
+            if item.skip_reason is None:
+                by_source.setdefault(item.observation.source_id, set()).add(
+                    item.key.normalized_identity
+                )
+        for source_id, identities in by_source.items():
+            found = repository.find_assets_by_identities(
+                self.db, self.tenant_id, source_id, sorted(identities)
+            )
+            for identity, asset in found.items():
+                known[(source_id, identity)] = asset
+
+        for item in prepared:
+            if item.skip_reason is not None:
+                self._log_skip(item.observation, item.skip_reason)
+                counts[ObservationOutcome.SKIPPED] += 1
+                continue
+            _, outcome = self._ingest(item, known)
             counts[outcome] += 1
         summary = CatalogSummary(
             created=counts[ObservationOutcome.CREATED],
@@ -433,38 +477,97 @@ class DiscoveredAssetService:
     def record_observation(
         self, observation: DiscoveryObservation
     ) -> tuple[DiscoveredAsset | None, ObservationOutcome]:
-        """Validate one observation and create or refresh its catalog entry."""
-        name = normalize_asset_name(observation.name)
+        """Classify one observation and create or refresh its catalog entry.
+
+        Classification (Sub-feature 5) deterministically decides the
+        asset type, normalized name and normalized metadata before the
+        catalog identity is built; unknown observation types raise
+        instead of being guessed.
+        """
+        prepared = self._prepare(observation)
+        if prepared.skip_reason is not None:
+            self._log_skip(observation, prepared.skip_reason)
+            return None, ObservationOutcome.SKIPPED
+        return self._ingest(prepared, known=None)
+
+    def _prepare(self, observation: DiscoveryObservation) -> _Prepared:
+        """Classify, resolve identity and guard one observation.
+
+        Raises for unusable observations (unknown type, empty name) and
+        reports content guards as ``skip_reason`` so the caller decides
+        when — and whether — anything persists.
+        """
+        classification = classify(observation)
+        name = classification.name
         if not name:
             raise InvalidDiscoveredAssetError("observation name must not be empty")
 
-        asset_type = asset_type_for_observation(observation.observation_type)
-        identity = build_normalized_identity(asset_type, name)
-        metadata = build_asset_metadata(observation)
+        key = self.dedup.build_key(observation.source_id, classification)
+        metadata = build_asset_metadata(observation, classification)
 
         # content guards: hostile or pathological input is dropped from
         # the catalog instead of failing the whole discovery run
+        skip_reason = None
         if len(name) > MAX_NAME_LENGTH:
-            self._log_skip(observation, "name_too_long")
-            return None, ObservationOutcome.SKIPPED
-        if has_secret_shaped_value(name, observation):
-            self._log_skip(observation, "secret_shaped_value")
-            return None, ObservationOutcome.SKIPPED
+            skip_reason = "name_too_long"
+        elif has_secret_shaped_value(name, observation):
+            skip_reason = "secret_shaped_value"
+        return _Prepared(
+            observation=observation,
+            classification=classification,
+            key=key,
+            metadata=metadata,
+            skip_reason=skip_reason,
+        )
 
+    def _ingest(
+        self,
+        prepared: _Prepared,
+        known: dict[tuple[UUID, str], DiscoveredAsset] | None,
+    ) -> tuple[DiscoveredAsset, ObservationOutcome]:
+        """Create or refresh the catalog entry for a prepared observation.
+
+        ``known`` carries prefetch matches (and assets created earlier in
+        the same batch) keyed by ``(source_id, normalized_identity)``;
+        ``None`` means single-observation path with a direct lookup.
+        """
+        observation = prepared.observation
+        key = prepared.key
         self._verify_references(observation)
 
-        existing = repository.find_asset_by_identity(
-            self.db, self.tenant_id, observation.source_id, identity
-        )
+        existing = known.get((observation.source_id, key.normalized_identity)) if known else None
+        if existing is None:
+            existing = self.dedup.find_duplicate(key)
         if existing is not None:
-            return self._refresh(existing, observation, metadata)
-        return self._create(observation, name, asset_type.value, identity, metadata)
+            asset, outcome = self._refresh(existing, observation, prepared.metadata)
+        else:
+            asset, outcome = self._create(
+                observation,
+                prepared.classification.name,
+                key.asset_type,
+                key.normalized_identity,
+                prepared.metadata,
+            )
+        if known is not None:
+            # within-batch duplicates and race recovery resolve against
+            # this cache from now on
+            known[(observation.source_id, key.normalized_identity)] = asset
+        return asset, outcome
 
     def get(self, asset_id: UUID) -> DiscoveredAsset:
         asset = repository.get_discovered_asset(self.db, self.tenant_id, asset_id)
         if asset is None:
             raise DiscoveredAssetNotFoundError(f"discovered asset '{asset_id}' not found")
         return asset
+
+    def observed_run_ids(self, asset_id: UUID) -> list[UUID]:
+        """Discovery runs that observed this asset, oldest first.
+
+        Run-link history survives ``last_seen_run_id`` advancing, so an
+        asset seen in Run 1, 2 and 3 keeps all three run references.
+        """
+        self.get(asset_id)  # tenant-scoped existence check (404 when unknown)
+        return repository.list_asset_run_ids(self.db, self.tenant_id, asset_id)
 
     def list(self, filters: DiscoveredAssetFilter) -> tuple[list[DiscoveredAsset], int]:
         return repository.list_discovered_assets(self.db, self.tenant_id, filters)
@@ -473,9 +576,7 @@ class DiscoveredAssetService:
         source_id = observation.source_id
         if source_id not in self._verified_sources:
             if repository.get_source(self.db, self.tenant_id, source_id) is None:
-                raise DiscoverySourceNotFoundError(
-                    f"discovery source '{source_id}' not found"
-                )
+                raise DiscoverySourceNotFoundError(f"discovery source '{source_id}' not found")
             self._verified_sources.add(source_id)
         run_id = observation.run_id
         if run_id not in self._verified_runs:
@@ -517,6 +618,14 @@ class DiscoveredAssetService:
             if raced is None:
                 raise
             return self._refresh(raced, observation, metadata)
+        # asset row already committed, so the link insert cannot mask a
+        # duplicate-identity race
+        repository.record_asset_run(
+            self.db,
+            discovered_asset_id=asset.id,
+            discovery_run_id=observation.run_id,
+            observed_at=now,
+        )
         self._log("discovered asset created", asset, ObservationOutcome.CREATED)
         return asset, ObservationOutcome.CREATED
 
@@ -527,24 +636,29 @@ class DiscoveredAssetService:
         metadata: dict,
     ) -> tuple[DiscoveredAsset, ObservationOutcome]:
         # first-seen values win: re-scanning an unchanged source must not
-        # churn metadata, while genuinely new keys are still captured
+        # churn metadata, while empty stored values are still filled in
+        # and genuinely new keys are captured (deduplication.merge_metadata)
         existing_metadata = asset.metadata_ or {}
-        merged = {**metadata, **existing_metadata}
-        changed = merged != existing_metadata
+        merged, changed = merge_metadata(existing_metadata, metadata)
         if changed:
             asset.metadata_ = merged
         asset.last_seen_at = datetime.now(UTC)
         asset.last_seen_run_id = observation.run_id
         # refreshing never touches identity columns, so no constraint can
-        # fire here
-        self.db.commit()
+        # fire here; record_asset_run's queries autoflush the pending
+        # metadata/timestamp updates and its commit persists everything
+        # in one transaction (link row keeps its original first_observed_at)
+        repository.record_asset_run(
+            self.db,
+            discovered_asset_id=asset.id,
+            discovery_run_id=observation.run_id,
+            observed_at=asset.last_seen_at,
+        )
         outcome = ObservationOutcome.UPDATED if changed else ObservationOutcome.UNCHANGED
         self._log("discovered asset observed", asset, outcome)
         return asset, outcome
 
-    def _log(
-        self, message: str, asset: DiscoveredAsset, outcome: ObservationOutcome
-    ) -> None:
+    def _log(self, message: str, asset: DiscoveredAsset, outcome: ObservationOutcome) -> None:
         logger.info(
             message,
             extra={

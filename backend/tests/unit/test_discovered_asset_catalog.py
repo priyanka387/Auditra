@@ -5,15 +5,18 @@ from uuid import uuid4
 import pytest
 
 from app.modules.asset_discovery.catalog import (
-    ASSET_TYPE_BY_OBSERVATION,
-    asset_type_for_observation,
     build_asset_metadata,
     build_normalized_identity,
     has_secret_shaped_value,
     normalize_asset_name,
     validate_file_path,
 )
-from app.modules.asset_discovery.connectors.base import DiscoveryObservation
+from app.modules.asset_discovery.classification import classify
+from app.modules.asset_discovery.connectors.base import (
+    FRAMEWORK_REFERENCE,
+    PROVIDER_REFERENCE,
+    DiscoveryObservation,
+)
 from app.modules.asset_discovery.enums import AssetType
 from app.modules.asset_discovery.errors import InvalidDiscoveredAssetError
 
@@ -47,20 +50,6 @@ def test_initial_asset_types_match_specification():
         "ENDPOINT",
         "AI_SERVICE",
     }
-
-
-def test_observation_mapping_covers_connector_observation_types():
-    assert ASSET_TYPE_BY_OBSERVATION["model_reference"] is AssetType.MODEL_REFERENCE
-    assert ASSET_TYPE_BY_OBSERVATION["provider_reference"] is AssetType.AI_SERVICE
-    assert ASSET_TYPE_BY_OBSERVATION["framework_reference"] is AssetType.TOOL
-    assert ASSET_TYPE_BY_OBSERVATION["agent_reference"] is AssetType.AGENT
-    assert ASSET_TYPE_BY_OBSERVATION["workflow_reference"] is AssetType.WORKFLOW
-
-
-def test_unknown_observation_type_raises_instead_of_guessing():
-    with pytest.raises(InvalidDiscoveredAssetError):
-        asset_type_for_observation("model_deployment")
-    assert asset_type_for_observation("model_reference") is AssetType.MODEL_REFERENCE
 
 
 def test_identity_is_deterministic():
@@ -114,9 +103,8 @@ def test_validate_file_path_rejects_oversized_path():
 
 
 def test_metadata_combines_structural_and_rule_fields():
-    metadata = build_asset_metadata(
-        _observation(provider="openai", metadata={"framework": "langchain"})
-    )
+    observation = _observation(provider="openai", metadata={"framework": "langchain"})
+    metadata = build_asset_metadata(observation, classify(observation))
     assert metadata == {
         "framework": "langchain",
         "observation_type": "model_reference",
@@ -124,7 +112,41 @@ def test_metadata_combines_structural_and_rule_fields():
         "detection_rule": "model.assignment",
         "line_number": 2,
         "provider": "openai",
+        "classification_rule": "type.model_reference",
+        "model_id": "gpt-4o",
     }
+
+
+def test_metadata_without_classification_stays_structural_only():
+    metadata = build_asset_metadata(_observation(provider="openai"))
+    assert "classification_rule" not in metadata
+    assert "model_id" not in metadata
+
+
+def test_metadata_classification_extras_win_over_raw_rule_values():
+    observation = _observation(
+        observation_type=FRAMEWORK_REFERENCE,
+        name="langchain",
+        detection_rule="framework.langchain.import",
+        metadata={"framework": " LangChain "},
+    )
+    metadata = build_asset_metadata(observation, classify(observation))
+    assert metadata["framework"] == "langchain"  # normalized classification value wins
+    assert metadata["classification_rule"] == "type.framework_reference"
+
+
+def test_metadata_preserves_rule_values_classification_does_not_normalize():
+    observation = _observation(
+        observation_type=PROVIDER_REFERENCE,
+        name="openai",
+        provider="openai",
+        detection_rule="provider.openai.import",
+        metadata={"framework": "langchain"},
+    )
+    metadata = build_asset_metadata(observation, classify(observation))
+    assert metadata["framework"] == "langchain"  # stray value kept verbatim
+    assert metadata["provider"] == "openai"  # normalized provider classification
+    assert metadata["classification_rule"] == "type.provider_reference"
 
 
 def test_metadata_omits_provider_and_line_when_absent():

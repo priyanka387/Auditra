@@ -132,10 +132,11 @@ class DiscoveredAsset(Base):
 
     A discovered asset is an *observation*, not a canonical Auditra
     inventory entity: mapping it to e.g. a Model Inventory record is
-    owned by Asset Reconciliation (Sub-feature 5). Identity is scoped
+    owned by Asset Reconciliation (Sub-feature 7). Identity is scoped
     to the discovery source it was observed from so the same asset seen
-    from another source stays a separate entry until cross-source
-    deduplication/reconciliation (Sub-features 6/7) relates them.
+    from another source stays a separate entry: deduplication
+    (Sub-feature 6) preserves source boundaries, and reconciliation
+    (Sub-feature 7) is what later relates such entries.
 
     ``last_seen_run_id`` records the discovery execution that last
     observed the asset; full per-observation evidence belongs to
@@ -192,6 +193,43 @@ class DiscoveredAsset(Base):
 
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class DiscoveredAssetRun(Base):
+    """Link recording that one discovery run observed one discovered asset.
+
+    Rows are historical traceability: they are never mutated in place, so
+    an asset seen in Run 1, Run 2 and Run 3 keeps all three links even as
+    ``DiscoveredAsset.last_seen_run_id`` advances. Evidence content itself
+    belongs to Discovery Evidence (Sub-feature 9).
+    """
+
+    __tablename__ = "discovered_asset_runs"
+    __table_args__ = (
+        Index(
+            "uq_discovered_asset_runs_asset_run",
+            "discovered_asset_id",
+            "discovery_run_id",
+            unique=True,
+        ),
+        Index("ix_discovered_asset_runs_tenant_run", "tenant_id", "discovery_run_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID] = mapped_column()
+    discovered_asset_id: Mapped[UUID] = mapped_column(
+        ForeignKey("discovered_assets.id", ondelete="RESTRICT")
+    )
+    discovery_run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("discovery_runs.id", ondelete="RESTRICT")
+    )
+
+    first_observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

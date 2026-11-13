@@ -137,9 +137,7 @@ class DiscoveryExecutionService:
         try:
             catalog = self.catalog.record_observations(result.observations)
         except DomainError as exc:
-            self.runs.fail(
-                run_id, error_summary=f"catalog persistence failed: {exc.code}"
-            )
+            self.runs.fail(run_id, error_summary=f"catalog persistence failed: {exc.code}")
             self._log_finished(
                 source,
                 run,
@@ -156,9 +154,7 @@ class DiscoveryExecutionService:
                 "catalog persistence raised unexpectedly",
                 extra=self._log_context(source, run),
             )
-            self.runs.fail(
-                run_id, error_summary="unexpected error persisting discovered assets"
-            )
+            self.runs.fail(run_id, error_summary="unexpected error persisting discovered assets")
             raise DiscoveryExecutionError("discovery failed unexpectedly") from None
 
         if result.issues:
