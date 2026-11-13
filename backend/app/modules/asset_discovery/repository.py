@@ -193,9 +193,7 @@ def create_discovered_asset(db: Session, **fields) -> DiscoveredAsset:
     return asset
 
 
-def get_discovered_asset(
-    db: Session, tenant_id: UUID, asset_id: UUID
-) -> DiscoveredAsset | None:
+def get_discovered_asset(db: Session, tenant_id: UUID, asset_id: UUID) -> DiscoveredAsset | None:
     return db.scalar(
         select(DiscoveredAsset).where(
             DiscoveredAsset.tenant_id == tenant_id,

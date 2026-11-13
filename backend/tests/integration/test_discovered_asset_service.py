@@ -222,9 +222,7 @@ def test_secret_shaped_observation_is_skipped_not_persisted(db, source, run):
 
 
 def test_oversized_name_is_skipped_not_persisted(db, source, run):
-    asset, outcome = _service(db).record_observation(
-        _observation(source, run, name="a" * 300)
-    )
+    asset, outcome = _service(db).record_observation(_observation(source, run, name="a" * 300))
     assert outcome is ObservationOutcome.SKIPPED
     assert asset is None
     _, total = _service(db).list(DiscoveredAssetFilter())

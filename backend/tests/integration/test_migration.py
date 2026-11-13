@@ -300,8 +300,7 @@ def test_discovered_assets_migration_downgrade_and_upgrade(database):
             for fk in fks
         )
         assert any(
-            fk["referred_table"] == "discovery_runs"
-            and fk["options"].get("ondelete") == "RESTRICT"
+            fk["referred_table"] == "discovery_runs" and fk["options"].get("ondelete") == "RESTRICT"
             for fk in fks
         )
         checks = {c["name"] for c in insp.get_check_constraints("discovered_assets")}
