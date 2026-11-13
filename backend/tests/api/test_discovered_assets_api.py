@@ -201,6 +201,8 @@ def test_catalog_does_not_leak_secrets_or_file_contents(client, repo):
         "provider",
         "key",
         "framework",
+        "classification_rule",
+        "model_id",
     }
 
 

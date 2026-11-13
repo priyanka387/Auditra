@@ -91,6 +91,8 @@ def test_create_new_discovered_asset(db, source, run):
         "file_path": "app/llm.py",
         "detection_rule": "model.assignment",
         "line_number": 2,
+        "classification_rule": "type.model_reference",
+        "model_id": "gpt-4o",
     }
     assert _service(db).get(asset.id).id == asset.id
 
