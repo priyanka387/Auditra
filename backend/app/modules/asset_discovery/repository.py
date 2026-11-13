@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from datetime import datetime
 from uuid import UUID, uuid4
 
@@ -214,6 +215,26 @@ def find_asset_by_identity(
             DiscoveredAsset.normalized_identity == normalized_identity,
         )
     )
+
+
+def find_assets_by_identities(
+    db: Session, tenant_id: UUID, source_id: UUID, identities: Sequence[str]
+) -> dict[str, DiscoveredAsset]:
+    """Prefetch existing assets for a batch of identities within one source.
+
+    One indexed query per source instead of one lookup per observation;
+    identities unique to this call are simply absent from the result.
+    """
+    if not identities:
+        return {}
+    rows = db.scalars(
+        select(DiscoveredAsset).where(
+            DiscoveredAsset.tenant_id == tenant_id,
+            DiscoveredAsset.source_id == source_id,
+            DiscoveredAsset.normalized_identity.in_(identities),
+        )
+    )
+    return {asset.normalized_identity: asset for asset in rows}
 
 
 def _asset_conditions(tenant_id: UUID, filters: DiscoveredAssetFilter) -> list:

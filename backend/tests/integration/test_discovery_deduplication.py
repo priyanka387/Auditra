@@ -14,7 +14,10 @@ from app.modules.asset_discovery.enums import (
     DiscoverySourceType,
     ObservationOutcome,
 )
-from app.modules.asset_discovery.errors import DiscoveredAssetNotFoundError
+from app.modules.asset_discovery.errors import (
+    DiscoveredAssetNotFoundError,
+    InvalidDiscoveredAssetError,
+)
 from app.modules.asset_discovery.schemas import DiscoveredAssetFilter, DiscoverySourceCreate
 from app.modules.asset_discovery.service import (
     DiscoveredAssetService,
@@ -173,3 +176,44 @@ def test_run_side_lookup_returns_observed_assets(db, source, run):
 def test_observed_run_ids_rejects_unknown_asset(db, source, run):
     with pytest.raises(DiscoveredAssetNotFoundError):
         _service(db).observed_run_ids(uuid4())
+
+
+def test_batch_across_two_sources_prefetches_per_source(db, source, run, tmp_path):
+    other = DiscoverySourceService(db, TENANT).create(
+        DiscoverySourceCreate(
+            name="billing-service",
+            source_type=DiscoverySourceType.REPOSITORY,
+            config={"location": str(tmp_path)},
+        )
+    )
+    other_run = DiscoveryRunService(db, TENANT).create(other.id)
+
+    summary = _service(db).record_observations(
+        [
+            _observation(source, run),
+            _observation(source, run, file_path="app/second.py", line_number=9),
+            _observation(other, other_run),
+            _observation(other, other_run, file_path="app/second.py", line_number=9),
+        ]
+    )
+
+    # identity is scoped per source: two sources x one identity = 2 assets
+    assert summary.created == 2
+    assert summary.unchanged == 2
+    assert summary.updated == 0
+    _, total = _service(db).list(DiscoveredAssetFilter())
+    assert total == 2
+
+
+def test_batch_with_invalid_observation_persists_nothing(db, source, run):
+    with pytest.raises(InvalidDiscoveredAssetError):
+        _service(db).record_observations(
+            [
+                _observation(source, run),
+                _observation(source, run, observation_type="mystery"),
+            ]
+        )
+
+    # the batch is validated before anything persists
+    _, total = _service(db).list(DiscoveredAssetFilter())
+    assert total == 0

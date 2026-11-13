@@ -13,11 +13,12 @@ from app.modules.asset_discovery.catalog import (
     build_asset_metadata,
     has_secret_shaped_value,
 )
-from app.modules.asset_discovery.classification import classify
+from app.modules.asset_discovery.classification import ClassificationResult, classify
 from app.modules.asset_discovery.config_validation import validate_source_config
 from app.modules.asset_discovery.connectors.base import DiscoveryObservation
 from app.modules.asset_discovery.deduplication import (
     AssetDeduplicationService,
+    DeduplicationKey,
     merge_metadata,
 )
 from app.modules.asset_discovery.enums import (
@@ -376,6 +377,21 @@ class CatalogSummary:
         return self.created + self.updated + self.unchanged
 
 
+@dataclass
+class _Prepared:
+    """A validated observation with its identity resolution precomputed.
+
+    Preparing the whole batch up front keeps classification errors from
+    stranding a partially persisted batch (see ``record_observations``).
+    """
+
+    observation: DiscoveryObservation
+    classification: ClassificationResult
+    key: DeduplicationKey
+    metadata: dict
+    skip_reason: str | None = None
+
+
 class DiscoveredAssetService:
     """Turns discovery observations into persistent catalog entries.
 
@@ -409,8 +425,34 @@ class DiscoveredAssetService:
 
     def record_observations(self, observations: Sequence[DiscoveryObservation]) -> CatalogSummary:
         counts = dict.fromkeys(ObservationOutcome, 0)
-        for observation in observations:
-            _, outcome = self.record_observation(observation)
+        # prepare the whole batch first: classification/name errors raise
+        # before anything persists, so an invalid observation can never
+        # leave a half-recorded batch behind
+        prepared = [self._prepare(observation) for observation in observations]
+
+        # prefetch existing matches once per distinct source instead of
+        # one identity lookup per observation (identities are scoped per
+        # source, so the prefetch is too)
+        known: dict[tuple[UUID, str], DiscoveredAsset] = {}
+        by_source: dict[UUID, set[str]] = {}
+        for item in prepared:
+            if item.skip_reason is None:
+                by_source.setdefault(item.observation.source_id, set()).add(
+                    item.key.normalized_identity
+                )
+        for source_id, identities in by_source.items():
+            found = repository.find_assets_by_identities(
+                self.db, self.tenant_id, source_id, sorted(identities)
+            )
+            for identity, asset in found.items():
+                known[(source_id, identity)] = asset
+
+        for item in prepared:
+            if item.skip_reason is not None:
+                self._log_skip(item.observation, item.skip_reason)
+                counts[ObservationOutcome.SKIPPED] += 1
+                continue
+            _, outcome = self._ingest(item, known)
             counts[outcome] += 1
         summary = CatalogSummary(
             created=counts[ObservationOutcome.CREATED],
@@ -442,6 +484,19 @@ class DiscoveredAssetService:
         catalog identity is built; unknown observation types raise
         instead of being guessed.
         """
+        prepared = self._prepare(observation)
+        if prepared.skip_reason is not None:
+            self._log_skip(observation, prepared.skip_reason)
+            return None, ObservationOutcome.SKIPPED
+        return self._ingest(prepared, known=None)
+
+    def _prepare(self, observation: DiscoveryObservation) -> _Prepared:
+        """Classify, resolve identity and guard one observation.
+
+        Raises for unusable observations (unknown type, empty name) and
+        reports content guards as ``skip_reason`` so the caller decides
+        when — and whether — anything persists.
+        """
         classification = classify(observation)
         name = classification.name
         if not name:
@@ -452,19 +507,52 @@ class DiscoveredAssetService:
 
         # content guards: hostile or pathological input is dropped from
         # the catalog instead of failing the whole discovery run
+        skip_reason = None
         if len(name) > MAX_NAME_LENGTH:
-            self._log_skip(observation, "name_too_long")
-            return None, ObservationOutcome.SKIPPED
-        if has_secret_shaped_value(name, observation):
-            self._log_skip(observation, "secret_shaped_value")
-            return None, ObservationOutcome.SKIPPED
+            skip_reason = "name_too_long"
+        elif has_secret_shaped_value(name, observation):
+            skip_reason = "secret_shaped_value"
+        return _Prepared(
+            observation=observation,
+            classification=classification,
+            key=key,
+            metadata=metadata,
+            skip_reason=skip_reason,
+        )
 
+    def _ingest(
+        self,
+        prepared: _Prepared,
+        known: dict[tuple[UUID, str], DiscoveredAsset] | None,
+    ) -> tuple[DiscoveredAsset, ObservationOutcome]:
+        """Create or refresh the catalog entry for a prepared observation.
+
+        ``known`` carries prefetch matches (and assets created earlier in
+        the same batch) keyed by ``(source_id, normalized_identity)``;
+        ``None`` means single-observation path with a direct lookup.
+        """
+        observation = prepared.observation
+        key = prepared.key
         self._verify_references(observation)
 
-        existing = self.dedup.find_duplicate(key)
+        existing = known.get((observation.source_id, key.normalized_identity)) if known else None
+        if existing is None:
+            existing = self.dedup.find_duplicate(key)
         if existing is not None:
-            return self._refresh(existing, observation, metadata)
-        return self._create(observation, name, key.asset_type, key.normalized_identity, metadata)
+            asset, outcome = self._refresh(existing, observation, prepared.metadata)
+        else:
+            asset, outcome = self._create(
+                observation,
+                prepared.classification.name,
+                key.asset_type,
+                key.normalized_identity,
+                prepared.metadata,
+            )
+        if known is not None:
+            # within-batch duplicates and race recovery resolve against
+            # this cache from now on
+            known[(observation.source_id, key.normalized_identity)] = asset
+        return asset, outcome
 
     def get(self, asset_id: UUID) -> DiscoveredAsset:
         asset = repository.get_discovered_asset(self.db, self.tenant_id, asset_id)
