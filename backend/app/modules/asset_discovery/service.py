@@ -645,7 +645,7 @@ class DiscoveredAssetService:
         asset.last_seen_at = datetime.now(UTC)
         asset.last_seen_run_id = observation.run_id
         # refreshing never touches identity columns, so no constraint can
-        # fire here; the upsert's db.execute autoflushes the pending
+        # fire here; record_asset_run's queries autoflush the pending
         # metadata/timestamp updates and its commit persists everything
         # in one transaction (link row keeps its original first_observed_at)
         repository.record_asset_run(
