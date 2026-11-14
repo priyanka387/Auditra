@@ -38,6 +38,7 @@ from app.modules.asset_discovery.errors import (
     DiscoverySourceNotFoundError,
 )
 from app.modules.asset_discovery.models import DiscoveryRun, DiscoverySource
+from app.modules.asset_discovery.reconciliation import AssetReconciliationService
 from app.modules.asset_discovery.service import (
     CatalogSummary,
     DiscoveredAssetService,
@@ -94,6 +95,7 @@ class DiscoveryExecutionService:
         self.request_id = request_id
         self.runs = DiscoveryRunService(db, tenant_id, request_id=request_id)
         self.catalog = DiscoveredAssetService(db, tenant_id, request_id=request_id)
+        self.reconciliation = AssetReconciliationService(db, tenant_id, request_id=request_id)
 
     def execute(self, run_id: UUID) -> DiscoveryExecutionResult:
         run = self.runs.get(run_id)  # tenant-scoped; 404 when missing
@@ -155,6 +157,39 @@ class DiscoveryExecutionService:
                 extra=self._log_context(source, run),
             )
             self.runs.fail(run_id, error_summary="unexpected error persisting discovered assets")
+            raise DiscoveryExecutionError("discovery failed unexpectedly") from None
+
+        # reconcile everything this run observed against canonical
+        # entities (Sub-feature 7): deterministic matches link assets to
+        # their canonical Model, everything else stays unreconciled.
+        # Failure fails the run like a catalog failure — re-running a
+        # scan is idempotent, so nothing is lost but the attempt
+        try:
+            observed = repository.get_discovered_assets(
+                self.db,
+                self.tenant_id,
+                repository.list_run_asset_ids(self.db, self.tenant_id, run_id),
+            )
+            self.reconciliation.reconcile_many(observed)
+        except DomainError as exc:
+            self.runs.fail(run_id, error_summary=f"reconciliation failed: {exc.code}")
+            self._log_finished(
+                source,
+                run,
+                connector=result.connector,
+                files_scanned=result.files_scanned,
+                issue_count=len(result.issues),
+                started=started,
+                observation_count=len(result.observations),
+                error_code=exc.code,
+            )
+            raise
+        except Exception:
+            logger.exception(
+                "reconciliation raised unexpectedly",
+                extra=self._log_context(source, run),
+            )
+            self.runs.fail(run_id, error_summary="unexpected error reconciling discovered assets")
             raise DiscoveryExecutionError("discovery failed unexpectedly") from None
 
         if result.issues:

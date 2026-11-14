@@ -236,6 +236,26 @@ def find_assets_by_identities(
     return {asset.normalized_identity: asset for asset in rows}
 
 
+def get_discovered_assets(
+    db: Session, tenant_id: UUID, asset_ids: Sequence[UUID]
+) -> list[DiscoveredAsset]:
+    """Load a batch of catalog assets within one tenant (single query).
+
+    Used to reconcile everything a discovery run observed; ids outside
+    the tenant simply do not come back (tenant-scoped access only).
+    """
+    if not asset_ids:
+        return []
+    return list(
+        db.scalars(
+            select(DiscoveredAsset).where(
+                DiscoveredAsset.tenant_id == tenant_id,
+                DiscoveredAsset.id.in_(asset_ids),
+            )
+        )
+    )
+
+
 def _asset_conditions(tenant_id: UUID, filters: DiscoveredAssetFilter) -> list:
     conditions = [DiscoveredAsset.tenant_id == tenant_id]
     if filters.asset_type is not None:

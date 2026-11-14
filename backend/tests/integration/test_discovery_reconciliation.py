@@ -27,6 +27,7 @@ from app.modules.asset_discovery.enums import (
     ReconciliationStatus,
 )
 from app.modules.asset_discovery.errors import DiscoveredAssetNotFoundError
+from app.modules.asset_discovery.execution import DiscoveryExecutionService
 from app.modules.asset_discovery.models import DiscoveredAsset
 from app.modules.asset_discovery.reconciliation import (
     AssetReconciliationService,
@@ -417,3 +418,110 @@ def test_unknown_reconciliation_reason_is_rejected(db, source, run):
     with pytest.raises(IntegrityError):
         db.commit()
     db.rollback()
+
+
+# --- pipeline integration: discovery run reconciles what it observed --------
+
+
+def _execute(db, source):
+    run = DiscoveryRunService(db, TENANT).create(source.id)
+    result = DiscoveryExecutionService(db, TENANT).execute(run.id)
+    return run, result
+
+
+@pytest.fixture
+def repo(tmp_path):
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app" / "main.py").write_text('import openai\nmodel = "gpt-4o"\n', encoding="utf-8")
+    (tmp_path / "requirements.txt").write_text("langchain>=0.1.0\n", encoding="utf-8")
+    return tmp_path
+
+
+def _asset_by_identity(db, identity: str) -> DiscoveredAsset:
+    items, _ = DiscoveredAssetService(db, TENANT).list(
+        DiscoveredAssetFilter(search=identity.split("|", 1)[-1], page_size=100)
+    )
+    matches = [item for item in items if item.normalized_identity == identity]
+    assert len(matches) == 1, f"expected exactly one {identity}"
+    return matches[0]
+
+
+def test_execution_reconciles_observed_models_during_the_run(db, repo):
+    model = _register_model(db, "openai", "gpt-4o")
+    source = _source_for(db, repo)
+    _, result = _execute(db, source)
+
+    assert result.run.status == "COMPLETED"
+    model_asset = _asset_by_identity(db, "MODEL_REFERENCE|gpt-4o")
+    assert model_asset.reconciliation_status == ReconciliationStatus.MATCHED.value
+    assert model_asset.reconciliation_reason == "model_identifier"
+    assert model_asset.reconciled_model_id == model.id
+
+    # non-model observations stay valid but unreconciled
+    service_asset = _asset_by_identity(db, "AI_SERVICE|openai")
+    assert service_asset.reconciliation_status == ReconciliationStatus.UNMATCHED.value
+    assert service_asset.reconciliation_reason is None
+    assert service_asset.reconciled_model_id is None
+    tool_asset = _asset_by_identity(db, "TOOL|langchain")
+    assert tool_asset.reconciliation_status == ReconciliationStatus.UNMATCHED.value
+    assert tool_asset.reconciled_model_id is None
+
+
+def test_execution_without_canonical_models_leaves_assets_unmatched(db, repo):
+    source = _source_for(db, repo)
+    _, result = _execute(db, source)
+
+    assert result.run.status == "COMPLETED"
+    model_asset = _asset_by_identity(db, "MODEL_REFERENCE|gpt-4o")
+    assert model_asset.reconciliation_status == ReconciliationStatus.UNMATCHED.value
+    assert model_asset.reconciliation_reason == "no_canonical_model_match"
+    assert model_asset.reconciled_model_id is None
+    # discovery never turned into model registration
+    assert db.scalar(select(func.count()).select_from(Model)) == 0
+
+
+def test_execution_reconciliation_is_idempotent_across_reruns(db, repo):
+    model = _register_model(db, "openai", "gpt-4o")
+    source = _source_for(db, repo)
+    _execute(db, source)
+    model_asset_id = _asset_by_identity(db, "MODEL_REFERENCE|gpt-4o").id
+    model_id = model.id
+
+    _, second = _execute(db, source)
+    _, third = _execute(db, source)
+
+    # catalog and reconciliation state both stable across re-runs
+    assert (second.catalog.created, second.catalog.unchanged) == (0, 3)
+    assert (third.catalog.created, third.catalog.unchanged) == (0, 3)
+    stored = _refetch(db, model_asset_id)
+    assert stored.reconciliation_status == ReconciliationStatus.MATCHED.value
+    assert stored.reconciled_model_id == model_id
+    _, total = DiscoveredAssetService(db, TENANT).list(DiscoveredAssetFilter())
+    assert total == 3  # no duplicate assets or reconciliation rows
+
+
+def test_execution_resolves_previously_unmatched_assets_on_rerun(db, repo):
+    source = _source_for(db, repo)
+    _, first = _execute(db, source)
+    model_asset = _asset_by_identity(db, "MODEL_REFERENCE|gpt-4o")
+    assert model_asset.reconciliation_status == ReconciliationStatus.UNMATCHED.value
+    assert first.run.status == "COMPLETED"
+
+    model = _register_model(db, "openai", "gpt-4o")
+    model_id = model.id
+    _, second = _execute(db, source)
+
+    stored = _refetch(db, model_asset.id)
+    assert stored.reconciliation_status == ReconciliationStatus.MATCHED.value
+    assert stored.reconciled_model_id == model_id
+    assert second.run.status == "COMPLETED"
+
+
+def _source_for(db, location, name="payments-service"):
+    return DiscoverySourceService(db, TENANT).create(
+        DiscoverySourceCreate(
+            name=name,
+            source_type=DiscoverySourceType.REPOSITORY,
+            config={"location": str(location)},
+        )
+    )
