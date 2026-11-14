@@ -6,20 +6,32 @@ carry structured fields only — never raw source content, snippets or
 credentials.
 
 Pure functions with no database access: persistence is orchestrated by
-``DiscoveredAssetService`` together with ``repository.record_evidence``.
+``DiscoveredAssetService`` together with ``repository.record_evidence``,
+and reads by ``DiscoveryEvidenceService`` (append-only: no update or
+delete paths exist here).
 """
 
+import logging
 from dataclasses import dataclass
 from typing import Any
+from uuid import UUID
 
+from sqlalchemy.orm import Session
+
+from app.modules.asset_discovery import repository
 from app.modules.asset_discovery.catalog import MAX_LINE_NUMBER, validate_file_path
 from app.modules.asset_discovery.connectors.base import DiscoveryObservation
 from app.modules.asset_discovery.enums import EvidenceType
 from app.modules.asset_discovery.errors import (
+    DiscoveredAssetNotFoundError,
     InvalidDiscoveredAssetError,
     InvalidDiscoveryEvidenceError,
 )
+from app.modules.asset_discovery.models import DiscoveryEvidence
+from app.modules.asset_discovery.schemas import DiscoveryEvidenceFilter
 from app.modules.model_inventory.schemas.model import validate_metadata
+
+logger = logging.getLogger("auditra.asset_discovery")
 
 MAX_DETECTION_RULE_LENGTH = 255
 
@@ -86,3 +98,25 @@ def build_evidence(observation: DiscoveryObservation) -> EvidenceDraft:
         line_number=line_number,
         metadata=metadata,
     )
+
+
+class DiscoveryEvidenceService:
+    """Read-side access to one asset's append-only evidence records.
+
+    Reads are silent (matching ``DiscoveredAssetService.list``) and
+    strictly read-only: this service exposes no create, update or
+    delete operations — new runs only ever append rows.
+    """
+
+    def __init__(self, db: Session, tenant_id: UUID, request_id: str | None = None) -> None:
+        self.db = db
+        self.tenant_id = tenant_id
+        self.request_id = request_id
+
+    def list(
+        self, asset_id: UUID, filters: DiscoveryEvidenceFilter
+    ) -> tuple[list[DiscoveryEvidence], int]:
+        asset = repository.get_discovered_asset(self.db, self.tenant_id, asset_id)
+        if asset is None:
+            raise DiscoveredAssetNotFoundError(f"discovered asset '{asset_id}' not found")
+        return repository.list_asset_evidence(self.db, self.tenant_id, asset_id, filters)

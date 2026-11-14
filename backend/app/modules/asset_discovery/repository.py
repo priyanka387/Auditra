@@ -15,6 +15,7 @@ from app.modules.asset_discovery.errors import (
     DuplicateDiscoverySourceError,
     InvalidDiscoveredAssetError,
     InvalidDiscoveredAssetQueryError,
+    InvalidDiscoveryEvidenceQueryError,
     InvalidDiscoveryRunQueryError,
     InvalidDiscoverySourceQueryError,
 )
@@ -27,6 +28,7 @@ from app.modules.asset_discovery.models import (
 )
 from app.modules.asset_discovery.schemas import (
     DiscoveredAssetFilter,
+    DiscoveryEvidenceFilter,
     DiscoveryRunFilter,
     DiscoverySourceFilter,
 )
@@ -52,6 +54,11 @@ ASSET_SORT_COLUMNS = {
     "last_seen_at": DiscoveredAsset.last_seen_at,
     "created_at": DiscoveredAsset.created_at,
     "updated_at": DiscoveredAsset.updated_at,
+}
+
+EVIDENCE_SORT_COLUMNS = {
+    "observed_at": DiscoveryEvidence.observed_at,
+    "created_at": DiscoveryEvidence.created_at,
 }
 
 
@@ -295,6 +302,51 @@ def list_discovered_assets(
             select(DiscoveredAsset)
             .where(*conditions)
             .order_by(ordering, DiscoveredAsset.id)
+            .offset((filters.page - 1) * filters.page_size)
+            .limit(filters.page_size)
+        )
+    )
+    return items, total
+
+
+def _evidence_conditions(
+    tenant_id: UUID, asset_id: UUID, filters: DiscoveryEvidenceFilter
+) -> list:
+    conditions = [
+        DiscoveryEvidence.tenant_id == tenant_id,
+        DiscoveryEvidence.discovered_asset_id == asset_id,
+    ]
+    if filters.evidence_type is not None:
+        conditions.append(DiscoveryEvidence.evidence_type == filters.evidence_type)
+    if filters.detection_rule is not None:
+        conditions.append(DiscoveryEvidence.detection_rule == filters.detection_rule)
+    if filters.discovery_run_id is not None:
+        conditions.append(DiscoveryEvidence.discovery_run_id == filters.discovery_run_id)
+    return conditions
+
+
+def list_asset_evidence(
+    db: Session,
+    tenant_id: UUID,
+    asset_id: UUID,
+    filters: DiscoveryEvidenceFilter,
+) -> tuple[list[DiscoveryEvidence], int]:
+    """Page through one asset's append-only evidence records (read-only)."""
+    conditions = _evidence_conditions(tenant_id, asset_id, filters)
+    total = (
+        db.scalar(select(func.count()).select_from(DiscoveryEvidence).where(*conditions))
+        or 0
+    )
+
+    sort_column = EVIDENCE_SORT_COLUMNS.get(filters.sort_by)
+    if sort_column is None:
+        raise InvalidDiscoveryEvidenceQueryError(f"unsupported sort field '{filters.sort_by}'")
+    ordering = sort_column.desc() if filters.sort_order == "desc" else sort_column.asc()
+    items = list(
+        db.scalars(
+            select(DiscoveryEvidence)
+            .where(*conditions)
+            .order_by(ordering, DiscoveryEvidence.id)
             .offset((filters.page - 1) * filters.page_size)
             .limit(filters.page_size)
         )
