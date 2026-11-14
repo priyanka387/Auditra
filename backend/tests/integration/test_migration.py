@@ -1,4 +1,5 @@
 from pathlib import Path
+from uuid import uuid4
 
 import sqlalchemy as sa
 from alembic.config import Config
@@ -395,4 +396,76 @@ def test_asset_reconciliation_migration_downgrade_and_upgrade(database):
         insp = sa.inspect(engine)
         assert "reconciliation_status" in {c["name"] for c in insp.get_columns("discovered_assets")}
     finally:
+        engine.dispose()
+
+
+def test_asset_lifecycle_migration_downgrade_and_upgrade(database):
+    """SF8 widens the discovered asset status vocabulary (constraint only)."""
+    cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    engine = sa.create_engine(settings.database_url, poolclass=sa.pool.NullPool)
+    asset_id, source_id, tenant_id = uuid4(), uuid4(), uuid4()
+    try:
+        insp = sa.inspect(engine)
+        checks = {c["name"]: c for c in insp.get_check_constraints("discovered_assets")}
+        constraint = checks["ck_discovered_assets_status"]
+        definition = constraint.get("definition") or constraint.get("sqltext") or ""
+        for state in ("ACTIVE", "STALE", "DISAPPEARED", "IGNORED"):
+            assert state in definition, state
+
+        # a row in a lifecycle state must remain representable, and must
+        # collapse back to ACTIVE when the pre-SF8 vocabulary is restored
+        with engine.begin() as conn:
+            conn.execute(
+                sa.text(
+                    "INSERT INTO discovery_sources (id, tenant_id, name, source_type, config, status) "
+                    "VALUES (:source, :tenant, 'lifecycle-migration-source', 'repository', '{}', 'active')"
+                ),
+                {"source": source_id, "tenant": tenant_id},
+            )
+            conn.execute(
+                sa.text(
+                    "INSERT INTO discovered_assets "
+                    "(id, tenant_id, source_id, asset_type, name, normalized_identity, status, "
+                    "first_seen_at, last_seen_at) "
+                    "VALUES (:asset, :tenant, :source, 'MODEL_REFERENCE', 'gpt-4o', "
+                    "'MODEL_REFERENCE|gpt-4o', 'STALE', now(), now())"
+                ),
+                {"asset": asset_id, "tenant": tenant_id, "source": source_id},
+            )
+
+        try:
+            command.downgrade(cfg, "0012")
+            insp = sa.inspect(engine)
+            checks = {c["name"]: c for c in insp.get_check_constraints("discovered_assets")}
+            old_definition = (
+                checks["ck_discovered_assets_status"].get("definition")
+                or checks["ck_discovered_assets_status"].get("sqltext")
+                or ""
+            )
+            for state in ("STALE", "DISAPPEARED", "IGNORED"):
+                assert state not in old_definition, state
+            with engine.connect() as conn:
+                status = conn.execute(
+                    sa.text("SELECT status FROM discovered_assets WHERE id = :asset"),
+                    {"asset": asset_id},
+                ).scalar_one()
+            assert status == "ACTIVE"  # rows stay valid under the old constraint
+        finally:
+            command.upgrade(cfg, "head")
+            insp = sa.inspect(engine)
+            checks = {c["name"]: c for c in insp.get_check_constraints("discovered_assets")}
+            new_definition = (
+                checks["ck_discovered_assets_status"].get("definition")
+                or checks["ck_discovered_assets_status"].get("sqltext")
+                or ""
+            )
+            assert "DISAPPEARED" in new_definition
+    finally:
+        with engine.begin() as conn:
+            conn.execute(
+                sa.text("DELETE FROM discovered_assets WHERE id = :asset"), {"asset": asset_id}
+            )
+            conn.execute(
+                sa.text("DELETE FROM discovery_sources WHERE id = :source"), {"source": source_id}
+            )
         engine.dispose()

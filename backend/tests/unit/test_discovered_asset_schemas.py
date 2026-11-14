@@ -71,11 +71,26 @@ def test_filter_accepts_supported_filters():
     assert filters.search == "lang"
 
 
+@pytest.mark.parametrize(
+    "status",
+    [
+        DiscoveredAssetStatus.ACTIVE,
+        DiscoveredAssetStatus.STALE,
+        DiscoveredAssetStatus.DISAPPEARED,
+        DiscoveredAssetStatus.IGNORED,
+    ],
+)
+def test_filter_accepts_every_lifecycle_status(status):
+    # Asset Lifecycle (Sub-feature 8) extends the catalog vocabulary, so
+    # the status filter must accept each lifecycle state
+    assert DiscoveredAssetFilter(status=status).status is status
+
+
 def test_filter_rejects_invalid_asset_type_and_status():
     with pytest.raises(ValidationError):
         DiscoveredAssetFilter(asset_type="SPREADSHEET")
     with pytest.raises(ValidationError):
-        DiscoveredAssetFilter(status="DISAPPEARED")
+        DiscoveredAssetFilter(status="VANISHED")
     with pytest.raises(ValidationError):
         DiscoveredAssetFilter(reconciliation_status="SOULMATED")
 
@@ -116,7 +131,21 @@ def test_response_rejects_unknown_asset_type_and_status():
     with pytest.raises(ValidationError):
         DiscoveredAssetResponse(**_response_payload(asset_type="SOMETHING"))
     with pytest.raises(ValidationError):
-        DiscoveredAssetResponse(**_response_payload(status="STALE"))
+        DiscoveredAssetResponse(**_response_payload(status="VANISHED"))
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        DiscoveredAssetStatus.ACTIVE,
+        DiscoveredAssetStatus.STALE,
+        DiscoveredAssetStatus.DISAPPEARED,
+        DiscoveredAssetStatus.IGNORED,
+    ],
+)
+def test_response_accepts_every_lifecycle_status(status):
+    response = DiscoveredAssetResponse(**_response_payload(status=status))
+    assert response.status is status
 
 
 def test_response_reads_metadata_from_orm_attribute_name():
