@@ -11,6 +11,7 @@ from app.modules.asset_discovery.errors import (
     DiscoverySourceNotFoundError,
     DuplicateDiscoveredAssetError,
     DuplicateDiscoverySourceError,
+    InvalidDiscoveredAssetError,
     InvalidDiscoveredAssetQueryError,
     InvalidDiscoveryRunQueryError,
     InvalidDiscoverySourceQueryError,
@@ -235,6 +236,26 @@ def find_assets_by_identities(
     return {asset.normalized_identity: asset for asset in rows}
 
 
+def get_discovered_assets(
+    db: Session, tenant_id: UUID, asset_ids: Sequence[UUID]
+) -> list[DiscoveredAsset]:
+    """Load a batch of catalog assets within one tenant (single query).
+
+    Used to reconcile everything a discovery run observed; ids outside
+    the tenant simply do not come back (tenant-scoped access only).
+    """
+    if not asset_ids:
+        return []
+    return list(
+        db.scalars(
+            select(DiscoveredAsset).where(
+                DiscoveredAsset.tenant_id == tenant_id,
+                DiscoveredAsset.id.in_(asset_ids),
+            )
+        )
+    )
+
+
 def _asset_conditions(tenant_id: UUID, filters: DiscoveredAssetFilter) -> list:
     conditions = [DiscoveredAsset.tenant_id == tenant_id]
     if filters.asset_type is not None:
@@ -243,6 +264,8 @@ def _asset_conditions(tenant_id: UUID, filters: DiscoveredAssetFilter) -> list:
         conditions.append(DiscoveredAsset.source_id == filters.source_id)
     if filters.status is not None:
         conditions.append(DiscoveredAsset.status == filters.status)
+    if filters.reconciliation_status is not None:
+        conditions.append(DiscoveredAsset.reconciliation_status == filters.reconciliation_status)
     if filters.search is not None:
         term = f"%{filters.search}%"
         conditions.append(
@@ -286,6 +309,23 @@ def commit_asset(db: Session) -> None:
         # a concurrent observation of the same identity
         raise DuplicateDiscoveredAssetError(
             "discovered asset with this identity already exists"
+        ) from None
+
+
+def commit_reconciliation(db: Session) -> None:
+    """Persist reconciliation state written onto discovered assets.
+
+    The reconciliation service only produces state the check
+    constraints allow (status/reason vocabulary, MATCHED <-> canonical
+    model), so an IntegrityError here means the state was invalid —
+    roll back rather than keep a half-applied decision.
+    """
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise InvalidDiscoveredAssetError(
+            "reconciliation result violates discovered asset constraints"
         ) from None
 
 

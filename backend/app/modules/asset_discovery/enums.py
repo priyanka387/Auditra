@@ -73,3 +73,21 @@ class ObservationOutcome(str, Enum):
     UPDATED = "UPDATED"  # existing asset gained new metadata
     UNCHANGED = "UNCHANGED"  # existing asset re-observed, timestamps refreshed
     SKIPPED = "SKIPPED"  # deliberately not persisted (e.g. secret-shaped)
+
+
+class ReconciliationStatus(str, Enum):
+    """Outcome of reconciling a discovered asset to a canonical entity.
+
+    Vocabulary follows the master Asset Discovery specification (§8):
+    UNMATCHED (default — no canonical entity found), MATCHED (one
+    canonical entity confidently identified), AMBIGUOUS (several
+    candidates — never linked automatically) and IGNORED (reserved for
+    explicit future decisions; no flow produces it today). Lifecycle
+    states (STALE, DISAPPEARED, ...) are unrelated and belong to Asset
+    Lifecycle (Sub-feature 8).
+    """
+
+    UNMATCHED = "UNMATCHED"
+    MATCHED = "MATCHED"
+    AMBIGUOUS = "AMBIGUOUS"
+    IGNORED = "IGNORED"

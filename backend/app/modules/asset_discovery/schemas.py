@@ -10,6 +10,7 @@ from app.modules.asset_discovery.enums import (
     DiscoveryRunStatus,
     DiscoverySourceStatus,
     DiscoverySourceType,
+    ReconciliationStatus,
 )
 from app.modules.model_inventory.schemas.model import validate_metadata
 
@@ -247,6 +248,9 @@ class DiscoveredAssetResponse(BaseModel):
     name: str
     normalized_identity: str
     status: DiscoveredAssetStatus
+    reconciliation_status: ReconciliationStatus
+    reconciliation_reason: str | None = None
+    reconciled_model_id: UUID | None = None
     metadata: dict[str, Any] = Field(
         default_factory=dict, validation_alias=AliasChoices("metadata_", "metadata")
     )
@@ -279,6 +283,7 @@ class DiscoveredAssetFilter(BaseModel):
     asset_type: AssetType | None = None
     source_id: UUID | None = None
     status: DiscoveredAssetStatus | None = None
+    reconciliation_status: ReconciliationStatus | None = None
     search: str | None = Field(default=None, max_length=255)
     sort_by: str = "last_seen_at"
     sort_order: str = "desc"

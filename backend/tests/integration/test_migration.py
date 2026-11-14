@@ -341,3 +341,58 @@ def test_discovered_asset_runs_migration_downgrade_and_upgrade(database):
         assert sa.inspect(engine).has_table("discovered_asset_runs")
     finally:
         engine.dispose()
+
+
+def test_asset_reconciliation_migration_downgrade_and_upgrade(database):
+    """SF7 adds reconciliation state to discovered_assets (columns only)."""
+    cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    engine = sa.create_engine(settings.database_url, poolclass=sa.pool.NullPool)
+    try:
+        insp = sa.inspect(engine)
+        assert insp.has_table("discovered_assets")
+        columns = {c["name"]: c for c in insp.get_columns("discovered_assets")}
+        for name in (
+            "reconciliation_status",
+            "reconciliation_reason",
+            "reconciled_model_id",
+        ):
+            assert name in columns, name
+        # pre-existing rows must be representable as unreconciled
+        assert "'UNMATCHED'" in (columns["reconciliation_status"].get("default") or "")
+        assert columns["reconciliation_reason"].get("default") is None
+        assert columns["reconciled_model_id"].get("default") is None
+
+        fks = insp.get_foreign_keys("discovered_assets")
+        assert any(
+            fk["referred_table"] == "models" and fk["options"].get("ondelete") == "RESTRICT"
+            for fk in fks
+        ), "reconciled_model_id must reference models RESTRICT"
+
+        checks = {c["name"] for c in insp.get_check_constraints("discovered_assets")}
+        assert "ck_discovered_assets_reconciliation_status" in checks
+        assert "ck_discovered_assets_reconciliation_reason" in checks
+        assert "ck_discovered_assets_reconciled_model" in checks
+
+        indexes = {i["name"] for i in insp.get_indexes("discovered_assets")}
+        assert "ix_discovered_assets_tenant_reconciliation_status" in indexes
+        try:
+            command.downgrade(cfg, "0011")
+            insp = sa.inspect(engine)
+            assert insp.has_table("discovered_assets")
+            dropped_columns = {c["name"] for c in insp.get_columns("discovered_assets")}
+            assert "reconciliation_status" not in dropped_columns
+            assert "reconciled_model_id" not in dropped_columns
+            dropped_checks = {c["name"] for c in insp.get_check_constraints("discovered_assets")}
+            assert "ck_discovered_assets_reconciled_model" not in dropped_checks
+            dropped_indexes = {i["name"] for i in insp.get_indexes("discovered_assets")}
+            assert "ix_discovered_assets_tenant_reconciliation_status" not in dropped_indexes
+            assert not any(
+                fk["referred_table"] == "models"
+                for fk in insp.get_foreign_keys("discovered_assets")
+            )
+        finally:
+            command.upgrade(cfg, "head")
+        insp = sa.inspect(engine)
+        assert "reconciliation_status" in {c["name"] for c in insp.get_columns("discovered_assets")}
+    finally:
+        engine.dispose()

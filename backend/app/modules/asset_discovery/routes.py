@@ -15,6 +15,7 @@ from app.modules.asset_discovery.enums import (
     DiscoveryRunStatus,
     DiscoverySourceStatus,
     DiscoverySourceType,
+    ReconciliationStatus,
 )
 from app.modules.asset_discovery.errors import (
     InvalidDiscoveredAssetQueryError,
@@ -298,6 +299,7 @@ def list_discovered_assets(
     asset_type: AssetType | None = None,
     source_id: UUID | None = None,
     status: DiscoveredAssetStatus | None = None,
+    reconciliation_status: ReconciliationStatus | None = None,
     search: str | None = None,
     sort_by: str = "last_seen_at",
     sort_order: str = "desc",
@@ -309,6 +311,7 @@ def list_discovered_assets(
         asset_type=asset_type,
         source_id=source_id,
         status=status,
+        reconciliation_status=reconciliation_status,
         search=search,
         sort_by=sort_by,
         sort_order=sort_order,
