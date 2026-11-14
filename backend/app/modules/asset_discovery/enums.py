@@ -105,3 +105,21 @@ class ReconciliationStatus(str, Enum):
     MATCHED = "MATCHED"
     AMBIGUOUS = "AMBIGUOUS"
     IGNORED = "IGNORED"
+
+
+class EvidenceType(str, Enum):
+    """Signal category of one persisted evidence record (Sub-feature 9).
+
+    Values are exactly the stable observation types the detection rules
+    produce (``connectors/base.py``) — the vocabulary never invents a
+    category discovery cannot actually emit. The precise mechanism that
+    fired (import, usage, config, env, manifest, assignment, call) is
+    preserved per record in ``detection_rule``; classification of what
+    the signal *represents* stays out of evidence entirely.
+    """
+
+    PROVIDER_REFERENCE = "provider_reference"
+    FRAMEWORK_REFERENCE = "framework_reference"
+    MODEL_REFERENCE = "model_reference"
+    AGENT_REFERENCE = "agent_reference"
+    WORKFLOW_REFERENCE = "workflow_reference"

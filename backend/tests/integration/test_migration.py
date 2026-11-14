@@ -469,3 +469,43 @@ def test_asset_lifecycle_migration_downgrade_and_upgrade(database):
                 sa.text("DELETE FROM discovery_sources WHERE id = :source"), {"source": source_id}
             )
         engine.dispose()
+
+
+def test_discovery_evidence_migration_downgrade_and_upgrade(database):
+    """SF9 adds the append-only discovery evidence table."""
+    cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    engine = sa.create_engine(settings.database_url, poolclass=sa.pool.NullPool)
+    try:
+        insp = sa.inspect(engine)
+        assert insp.has_table("discovery_evidence")
+        indexes = {i["name"]: i for i in insp.get_indexes("discovery_evidence")}
+        unique = indexes.get("uq_discovery_evidence_observation")
+        assert unique is not None and unique["unique"] is True
+        assert unique["column_names"] == [
+            "discovered_asset_id",
+            "discovery_run_id",
+            "detection_rule",
+            "file_path",
+            "line_number",
+        ]
+        for name in (
+            "ix_discovery_evidence_tenant_asset_observed_at",
+            "ix_discovery_evidence_tenant_run",
+        ):
+            assert name in indexes, name
+        fks = {fk["referred_table"]: fk for fk in insp.get_foreign_keys("discovery_evidence")}
+        assert set(fks) == {"discovered_assets", "discovery_sources", "discovery_runs"}
+        assert all(fk["options"].get("ondelete") == "RESTRICT" for fk in fks.values())
+        checks = {c["name"] for c in insp.get_check_constraints("discovery_evidence")}
+        assert "ck_discovery_evidence_evidence_type" in checks
+        assert "ck_discovery_evidence_line_number" in checks
+        try:
+            command.downgrade(cfg, "0013")
+            insp = sa.inspect(engine)
+            assert not insp.has_table("discovery_evidence")
+            assert insp.has_table("discovered_asset_runs")
+        finally:
+            command.upgrade(cfg, "head")
+            assert sa.inspect(engine).has_table("discovery_evidence")
+    finally:
+        engine.dispose()

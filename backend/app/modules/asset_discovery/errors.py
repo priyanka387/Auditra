@@ -140,3 +140,24 @@ class InvalidAssetLifecyclePolicyError(AssetLifecycleError):
 
     code = "ASSET_LIFECYCLE_POLICY_INVALID"
     http_status = 422
+
+
+class DiscoveryEvidenceError(DomainError):
+    """Base error for Discovery Evidence (Sub-feature 9) operations."""
+
+    code = "DISCOVERY_EVIDENCE_ERROR"
+    http_status = 400
+
+
+class InvalidDiscoveryEvidenceError(DiscoveryEvidenceError):
+    """An observation cannot be represented as a structured evidence record."""
+
+    code = "DISCOVERY_EVIDENCE_INVALID"
+    http_status = 422
+
+
+class InvalidDiscoveryEvidenceQueryError(DiscoveryEvidenceError):
+    """An evidence listing request carries an unsupported query."""
+
+    code = "DISCOVERY_EVIDENCE_QUERY_INVALID"
+    http_status = 400
