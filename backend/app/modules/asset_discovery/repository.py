@@ -264,6 +264,8 @@ def _asset_conditions(tenant_id: UUID, filters: DiscoveredAssetFilter) -> list:
         conditions.append(DiscoveredAsset.source_id == filters.source_id)
     if filters.status is not None:
         conditions.append(DiscoveredAsset.status == filters.status)
+    if filters.reconciliation_status is not None:
+        conditions.append(DiscoveredAsset.reconciliation_status == filters.reconciliation_status)
     if filters.search is not None:
         term = f"%{filters.search}%"
         conditions.append(

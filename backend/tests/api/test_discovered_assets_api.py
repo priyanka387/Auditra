@@ -18,6 +18,9 @@ ITEM_KEYS = {
     "name",
     "normalized_identity",
     "status",
+    "reconciliation_status",
+    "reconciliation_reason",
+    "reconciled_model_id",
     "metadata",
     "first_seen_at",
     "last_seen_at",
@@ -143,6 +146,98 @@ def test_get_by_id_returns_asset(client, repo):
     assert set(body) == ITEM_KEYS
     assert body["id"] == asset_id
     assert body["last_seen_run_id"] == run_id
+
+
+def test_list_exposes_reconciliation_state(client, repo):
+    _catalog(client, repo)
+
+    response = client.get(ASSETS_API)
+    assert response.status_code == 200, response.text
+    by_identity = {item["normalized_identity"]: item for item in response.json()["items"]}
+
+    model = by_identity["MODEL_REFERENCE|gpt-4o"]
+    # no canonical model exists yet: model observation stays unreconciled
+    assert model["reconciliation_status"] == "UNMATCHED"
+    assert model["reconciliation_reason"] == "no_canonical_model_match"
+    assert model["reconciled_model_id"] is None
+
+    # non-model observations are not model candidates at all
+    for identity in ("AI_SERVICE|openai", "TOOL|langchain"):
+        item = by_identity[identity]
+        assert item["reconciliation_status"] == "UNMATCHED"
+        assert item["reconciliation_reason"] is None
+        assert item["reconciled_model_id"] is None
+
+
+def test_get_by_id_exposes_reconciliation_state(client, repo):
+    _catalog(client, repo)
+    listed = client.get(ASSETS_API, params={"asset_type": "MODEL_REFERENCE"}).json()
+    asset_id = listed["items"][0]["id"]
+
+    response = client.get(f"{ASSETS_API}/{asset_id}")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["reconciliation_status"] == "UNMATCHED"
+    assert body["reconciliation_reason"] == "no_canonical_model_match"
+    assert body["reconciled_model_id"] is None
+
+
+def test_list_filters_by_reconciliation_status(client, repo):
+    source_id, _ = _catalog(client, repo)
+
+    # before any canonical model exists nothing is matched
+    matched = client.get(ASSETS_API, params={"reconciliation_status": "MATCHED"})
+    assert matched.status_code == 200, matched.text
+    assert matched.json()["total"] == 0
+
+    unmatched = client.get(ASSETS_API, params={"reconciliation_status": "UNMATCHED"})
+    assert unmatched.status_code == 200, unmatched.text
+    assert unmatched.json()["total"] == 3
+
+    # register the canonical model the observation points at, re-run:
+    # the next execution links the model reference (Sub-feature 7)
+    created = client.post(
+        "/api/v1/models",
+        json={
+            "provider_slug": "openai",
+            "model_type_slug": "llm",
+            "name": "GPT-4o",
+            "native_model_id": "gpt-4o",
+        },
+    )
+    assert created.status_code == 201, created.text
+    second_run = client.post(f"{SOURCES_API}/{source_id}/runs").json()
+    assert client.post(EXECUTE_API.format(run_id=second_run["id"])).status_code == 200
+
+    matched = client.get(ASSETS_API, params={"reconciliation_status": "MATCHED"})
+    assert matched.status_code == 200, matched.text
+    body = matched.json()
+    assert body["total"] == 1
+    item = body["items"][0]
+    assert item["normalized_identity"] == "MODEL_REFERENCE|gpt-4o"
+    assert item["reconciliation_reason"] == "model_identifier"
+    assert item["reconciled_model_id"] == created.json()["id"]
+
+    unmatched = client.get(ASSETS_API, params={"reconciliation_status": "UNMATCHED"})
+    assert unmatched.json()["total"] == 2  # the two non-model observations
+
+    # combined with the other filters
+    scoped = client.get(
+        ASSETS_API,
+        params={"reconciliation_status": "MATCHED", "asset_type": "MODEL_REFERENCE"},
+    )
+    assert scoped.json()["total"] == 1
+    scoped_none = client.get(
+        ASSETS_API,
+        params={"reconciliation_status": "MATCHED", "asset_type": "TOOL"},
+    )
+    assert scoped_none.json()["total"] == 0
+
+
+def test_list_invalid_reconciliation_status_returns_422(client):
+    response = client.get(ASSETS_API, params={"reconciliation_status": "SOULMATED"})
+    assert response.status_code == 422
+    assert _error(response)["code"] == "VALIDATION_ERROR"
 
 
 def test_get_unknown_asset_returns_404_envelope(client):
