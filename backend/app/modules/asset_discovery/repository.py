@@ -11,6 +11,7 @@ from app.modules.asset_discovery.errors import (
     DiscoverySourceNotFoundError,
     DuplicateDiscoveredAssetError,
     DuplicateDiscoverySourceError,
+    InvalidDiscoveredAssetError,
     InvalidDiscoveredAssetQueryError,
     InvalidDiscoveryRunQueryError,
     InvalidDiscoverySourceQueryError,
@@ -286,6 +287,23 @@ def commit_asset(db: Session) -> None:
         # a concurrent observation of the same identity
         raise DuplicateDiscoveredAssetError(
             "discovered asset with this identity already exists"
+        ) from None
+
+
+def commit_reconciliation(db: Session) -> None:
+    """Persist reconciliation state written onto discovered assets.
+
+    The reconciliation service only produces state the check
+    constraints allow (status/reason vocabulary, MATCHED <-> canonical
+    model), so an IntegrityError here means the state was invalid —
+    roll back rather than keep a half-applied decision.
+    """
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise InvalidDiscoveredAssetError(
+            "reconciliation result violates discovered asset constraints"
         ) from None
 
 

@@ -37,16 +37,33 @@ than leaving an asset unresolved. Signals come from already-persisted,
 validated discovery metadata only: no source content is read here, no
 code or shell is executed, and nothing leaves the database.
 
+Reconciliation state lives on ``DiscoveredAsset`` (status, reason and a
+foreign key to the canonical ``Model``): MATCHED and IGNORED links are
+sticky — re-running never re-matches them — while UNMATCHED and
+AMBIGUOUS states are re-evaluated so a later canonical registration can
+resolve them. Every attempt compares against the stored state first, so
+repeated reconciliation writes nothing when the outcome is unchanged.
+
 The service loads the tenant's non-archived canonical models once per
 instance and matches through hash indexes, so a batch costs
 O(candidates + assets) — never a pairwise scan of every asset against
 every model.
 """
 
+import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from uuid import UUID
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.modules.asset_discovery import repository
 from app.modules.asset_discovery.enums import AssetType, ReconciliationStatus
+from app.modules.asset_discovery.errors import DiscoveredAssetNotFoundError
+from app.modules.model_inventory.models import Model, ModelProvider
+
+logger = logging.getLogger("auditra.asset_discovery")
 
 # only these discovered asset types have a canonical Model Inventory
 # target; every other type stays unreconciled until a canonical entity
@@ -217,3 +234,179 @@ class CanonicalModelIndex:
             reason=REASON_NO_CANONICAL_MODEL_MATCH,
             model_id=None,
         )
+
+
+@dataclass(frozen=True)
+class ReconciliationSummary:
+    """Counts for one batch of reconciliation attempts.
+
+    ``matched``/``unmatched``/``ambiguous`` count outcomes (whether just
+    written or already stored), ``skipped`` counts assets no attempt was
+    made for (non-reconcilable type or an IGNORED decision), and
+    ``unchanged`` cross-cuts them: assets whose stored state already
+    equaled the outcome, i.e. rows reconciliation did not write to.
+    """
+
+    matched: int = 0
+    unmatched: int = 0
+    ambiguous: int = 0
+    skipped: int = 0
+    unchanged: int = 0
+
+    @property
+    def attempted(self) -> int:
+        return self.matched + self.unmatched + self.ambiguous
+
+
+def load_candidates(db: Session, tenant_id: UUID) -> list[CanonicalModelCandidate]:
+    """Load every canonical model candidate for one tenant in one query.
+
+    Archived models are excluded (``lifecycle_state != 'ARCHIVED'`` and
+    ``archived_at IS NULL``): an archived record is no longer an active
+    canonical identity, so a discovered asset stays UNMATCHED rather
+    than linking to it. The tenant predicate rides the models tenant
+    index; nothing outside the tenant is ever considered.
+    """
+    rows = db.execute(
+        select(Model.id, Model.canonical_key, Model.native_model_id, ModelProvider.slug)
+        .join(ModelProvider, Model.provider_id == ModelProvider.id)
+        .where(
+            Model.tenant_id == tenant_id,
+            Model.lifecycle_state != "ARCHIVED",
+            Model.archived_at.is_(None),
+        )
+    ).all()
+    return [
+        CanonicalModelCandidate(
+            id=row.id,
+            canonical_key=row.canonical_key,
+            native_model_id=row.native_model_id,
+            provider_slug=row.slug,
+        )
+        for row in rows
+    ]
+
+
+class AssetReconciliationService:
+    """Deterministically reconciles discovered assets to canonical models.
+
+    Read-mostly: it consults canonical Model Inventory rows and writes
+    only reconciliation state (status, reason, canonical model
+    foreign key) back onto the discovered asset. It never creates,
+    updates or deletes canonical models, never touches deduplication
+    identity, and never links two discovered assets to each other.
+
+    The canonical candidate index loads lazily once per service
+    instance, so ``reconcile_many`` runs a single query for the whole
+    batch. MATCHED and IGNORED assets short-circuit without any query —
+    their stored decision is stable by design.
+    """
+
+    def __init__(
+        self,
+        db: Session,
+        tenant_id: UUID,
+        request_id: str | None = None,
+    ) -> None:
+        self.db = db
+        self.tenant_id = tenant_id
+        self.request_id = request_id
+        self._index: CanonicalModelIndex | None = None
+
+    @property
+    def index(self) -> CanonicalModelIndex:
+        if self._index is None:
+            self._index = CanonicalModelIndex(load_candidates(self.db, self.tenant_id))
+        return self._index
+
+    def reconcile(self, asset) -> ReconciliationOutcome:
+        """Reconcile one discovered asset and persist the outcome.
+
+        Idempotent: an already-resolved (MATCHED/IGNORED) asset returns
+        its stored decision untouched, and any other outcome is only
+        written when it differs from the stored state.
+        """
+        outcome, changed = self._attempt(asset)
+        if changed:
+            repository.commit_reconciliation(self.db)
+        return outcome
+
+    def reconcile_many(self, assets: Sequence) -> ReconciliationSummary:
+        """Reconcile a batch (e.g. every asset one discovery run saw).
+
+        One candidate-index query for the whole batch and one commit at
+        the end; counts are returned for observability.
+        """
+        matched = unmatched = ambiguous = skipped = unchanged = 0
+        changed = False
+        for asset in assets:
+            outcome, wrote = self._attempt(asset)
+            changed = changed or wrote
+            if outcome.status == ReconciliationStatus.MATCHED.value:
+                matched += 1
+            elif outcome.status == ReconciliationStatus.AMBIGUOUS.value:
+                ambiguous += 1
+            elif outcome.reason is None:
+                skipped += 1  # not attempted: no canonical target / IGNORED
+            else:
+                unmatched += 1
+            if not wrote:
+                unchanged += 1
+        if changed:
+            repository.commit_reconciliation(self.db)
+        summary = ReconciliationSummary(
+            matched=matched,
+            unmatched=unmatched,
+            ambiguous=ambiguous,
+            skipped=skipped,
+            unchanged=unchanged,
+        )
+        logger.info(
+            "asset reconciliation finished",
+            extra={
+                "tenant_id": str(self.tenant_id),
+                "asset_count": len(assets),
+                "assets_matched": summary.matched,
+                "assets_unmatched": summary.unmatched,
+                "assets_ambiguous": summary.ambiguous,
+                "assets_skipped": summary.skipped,
+                "assets_unchanged": summary.unchanged,
+                "request_id": self.request_id,
+            },
+        )
+        return summary
+
+    def _attempt(self, asset) -> tuple[ReconciliationOutcome, bool]:
+        """Resolve one asset's outcome and apply it; returns (outcome, wrote)."""
+        if asset.tenant_id != self.tenant_id:
+            raise DiscoveredAssetNotFoundError(f"discovered asset '{asset.id}' not found")
+
+        stored = (
+            asset.reconciliation_status,
+            asset.reconciliation_reason,
+            asset.reconciled_model_id,
+        )
+        if asset.reconciliation_status in (
+            ReconciliationStatus.MATCHED.value,
+            ReconciliationStatus.IGNORED.value,
+        ):
+            # stable decision: never re-matched, never churned
+            return ReconciliationOutcome(*stored), False
+
+        signals = extract_signals(asset)
+        if signals is None:
+            # no canonical target for this asset type: stays unreconciled
+            outcome = ReconciliationOutcome(
+                status=ReconciliationStatus.UNMATCHED.value,
+                reason=None,
+                model_id=None,
+            )
+        else:
+            outcome = self.index.resolve(signals)
+
+        if (outcome.status, outcome.reason, outcome.model_id) == stored:
+            return outcome, False
+        asset.reconciliation_status = outcome.status
+        asset.reconciliation_reason = outcome.reason
+        asset.reconciled_model_id = outcome.model_id
+        return outcome, True
