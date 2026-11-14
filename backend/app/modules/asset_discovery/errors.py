@@ -113,3 +113,30 @@ class DuplicateDiscoveredAssetError(DiscoveredAssetError):
 class InvalidDiscoveredAssetQueryError(DiscoveredAssetError):
     code = "DISCOVERED_ASSET_QUERY_INVALID"
     http_status = 400
+
+
+class AssetLifecycleError(DomainError):
+    """Base error for Asset Lifecycle (Sub-feature 8) operations."""
+
+    code = "ASSET_LIFECYCLE_ERROR"
+    http_status = 400
+
+
+class InvalidAssetLifecycleEvaluationError(AssetLifecycleError):
+    """Lifecycle evaluation was requested outside a valid completed-run scope.
+
+    Raised when the run does not belong to the given source or when its
+    status is not one that permits evaluation (only COMPLETED and PARTIAL
+    runs carry a valid observation boundary; PENDING, RUNNING and FAILED
+    runs must never age assets out of the catalog).
+    """
+
+    code = "ASSET_LIFECYCLE_EVALUATION_INVALID"
+    http_status = 409
+
+
+class InvalidAssetLifecyclePolicyError(AssetLifecycleError):
+    """The configured stale/disappearance thresholds are inconsistent."""
+
+    code = "ASSET_LIFECYCLE_POLICY_INVALID"
+    http_status = 422

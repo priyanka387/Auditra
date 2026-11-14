@@ -317,3 +317,31 @@ def test_openapi_lists_discovered_asset_paths(client):
     paths = client.get("/openapi.json").json()["paths"]
     assert ASSETS_API in paths, f"missing {ASSETS_API}"
     assert f"{ASSETS_API}/{{asset_id}}" in paths, "missing asset detail path"
+
+
+def test_list_filters_by_lifecycle_status(client, repo):
+    source_id, _ = _catalog(client, repo)  # three assets, all ACTIVE
+
+    # nothing has aged yet
+    assert client.get(ASSETS_API, params={"status": "STALE"}).json()["total"] == 0
+    assert client.get(ASSETS_API, params={"status": "DISAPPEARED"}).json()["total"] == 0
+
+    # remove the dependency: the next completed run no longer observes it
+    (repo / "requirements.txt").unlink()
+    second_run = client.post(f"{SOURCES_API}/{source_id}/runs").json()
+    assert client.post(EXECUTE_API.format(run_id=second_run["id"])).status_code == 200
+
+    stale = client.get(ASSETS_API, params={"status": "STALE"})
+    assert stale.status_code == 200, stale.text
+    body = stale.json()
+    assert body["total"] == 1
+    assert body["items"][0]["normalized_identity"] == "TOOL|langchain"
+
+    active = client.get(ASSETS_API, params={"status": "ACTIVE"})
+    assert active.status_code == 200, active.text
+    assert active.json()["total"] == 2
+
+    # the lifecycle vocabulary is validated like every other filter
+    invalid = client.get(ASSETS_API, params={"status": "VANISHED"})
+    assert invalid.status_code == 422
+    assert _error(invalid)["code"] == "VALIDATION_ERROR"

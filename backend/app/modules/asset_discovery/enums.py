@@ -55,15 +55,29 @@ class AssetType(str, Enum):
 
 
 class DiscoveredAssetStatus(str, Enum):
-    """Basic catalog status.
+    """Lifecycle state of a catalog asset (Asset Lifecycle, Sub-feature 8).
 
-    Only the initial ACTIVE state exists for the catalog. Lifecycle
-    transitions (STALE, DISAPPEARED, IGNORED, ...) belong to Asset
-    Lifecycle (Sub-feature 8) and will extend this enum plus the status
-    check constraint; the catalog never performs lifecycle transitions.
+    - ACTIVE: observed in the latest applicable completed discovery run.
+    - STALE: missed at least the configured number of completed runs of
+      its source, but has not yet reached the disappearance threshold.
+    - DISAPPEARED: absent from enough completed runs to meet the
+      disappearance threshold. It is still the same catalog asset: a
+      later observation reactivates it to ACTIVE without creating a
+      duplicate (deduplication, Sub-feature 6, owns identity).
+    - IGNORED: intentionally excluded from lifecycle processing. Sticky:
+      neither discovery nor lifecycle evaluation ever overwrites it (no
+      flow produces it yet — it is reserved vocabulary, mirroring how
+      ``ReconciliationStatus.IGNORED`` was introduced).
+
+    New observations create assets as ACTIVE and the catalog never
+    performs lifecycle transitions itself: transitions are owned by
+    ``asset_lifecycle`` (deterministic, source-scoped, run-count based).
     """
 
     ACTIVE = "ACTIVE"
+    STALE = "STALE"
+    DISAPPEARED = "DISAPPEARED"
+    IGNORED = "IGNORED"
 
 
 class ObservationOutcome(str, Enum):
