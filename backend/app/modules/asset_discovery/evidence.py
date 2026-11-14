@@ -70,8 +70,7 @@ def build_evidence(observation: DiscoveryObservation) -> EvidenceDraft:
     detection_rule = (observation.detection_rule or "").strip()
     if not detection_rule or len(detection_rule) > MAX_DETECTION_RULE_LENGTH:
         raise InvalidDiscoveryEvidenceError(
-            f"detection_rule must be non-empty and at most "
-            f"{MAX_DETECTION_RULE_LENGTH} characters"
+            f"detection_rule must be non-empty and at most {MAX_DETECTION_RULE_LENGTH} characters"
         )
 
     line_number = observation.line_number

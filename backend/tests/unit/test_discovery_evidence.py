@@ -35,17 +35,17 @@ def test_evidence_type_values_equal_connector_observation_constants():
 
 
 def _observation(**overrides) -> DiscoveryObservation:
-    fields = dict(
-        source_id=uuid4(),
-        run_id=uuid4(),
-        observation_type=PROVIDER_REFERENCE,
-        name="openai",
-        provider="openai",
-        file_path="app/main.py",
-        line_number=1,
-        detection_rule="provider.openai.import",
-        metadata={},
-    )
+    fields = {
+        "source_id": uuid4(),
+        "run_id": uuid4(),
+        "observation_type": PROVIDER_REFERENCE,
+        "name": "openai",
+        "provider": "openai",
+        "file_path": "app/main.py",
+        "line_number": 1,
+        "detection_rule": "provider.openai.import",
+        "metadata": {},
+    }
     fields.update(overrides)
     return DiscoveryObservation(**fields)
 

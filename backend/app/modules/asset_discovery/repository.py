@@ -309,9 +309,7 @@ def list_discovered_assets(
     return items, total
 
 
-def _evidence_conditions(
-    tenant_id: UUID, asset_id: UUID, filters: DiscoveryEvidenceFilter
-) -> list:
+def _evidence_conditions(tenant_id: UUID, asset_id: UUID, filters: DiscoveryEvidenceFilter) -> list:
     conditions = [
         DiscoveryEvidence.tenant_id == tenant_id,
         DiscoveryEvidence.discovered_asset_id == asset_id,
@@ -333,10 +331,7 @@ def list_asset_evidence(
 ) -> tuple[list[DiscoveryEvidence], int]:
     """Page through one asset's append-only evidence records (read-only)."""
     conditions = _evidence_conditions(tenant_id, asset_id, filters)
-    total = (
-        db.scalar(select(func.count()).select_from(DiscoveryEvidence).where(*conditions))
-        or 0
-    )
+    total = db.scalar(select(func.count()).select_from(DiscoveryEvidence).where(*conditions)) or 0
 
     sort_column = EVIDENCE_SORT_COLUMNS.get(filters.sort_by)
     if sort_column is None:

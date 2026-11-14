@@ -72,9 +72,7 @@ def _model_asset_id(client) -> str:
 
 def _fixture(tmp_path):
     (tmp_path / "app").mkdir()
-    (tmp_path / "app" / "main.py").write_text(
-        'import openai\nmodel = "gpt-4o"\n', encoding="utf-8"
-    )
+    (tmp_path / "app" / "main.py").write_text('import openai\nmodel = "gpt-4o"\n', encoding="utf-8")
     (tmp_path / "requirements.txt").write_text("langchain>=0.1.0\n", encoding="utf-8")
     # content that must never leak through the evidence API
     (tmp_path / "app" / "settings.py").write_text(
@@ -133,9 +131,9 @@ def test_evidence_filter_by_type_and_rule(client, repo):
     assert typed["total"] == 1
     assert typed["items"][0]["detection_rule"] == "model.assignment"
 
-    openai_asset = client.get(
-        ASSETS_API, params={"asset_type": "AI_SERVICE"}
-    ).json()["items"][0]["id"]
+    openai_asset = client.get(ASSETS_API, params={"asset_type": "AI_SERVICE"}).json()["items"][0][
+        "id"
+    ]
     by_rule = client.get(
         f"{ASSETS_API}/{openai_asset}/evidence",
         params={"detection_rule": "provider.openai.import"},
@@ -143,9 +141,7 @@ def test_evidence_filter_by_type_and_rule(client, repo):
     assert by_rule.status_code == 200, by_rule.text
     assert by_rule.json()["total"] == 1
 
-    by_run = client.get(
-        f"{ASSETS_API}/{asset_id}/evidence", params={"discovery_run_id": run_id}
-    )
+    by_run = client.get(f"{ASSETS_API}/{asset_id}/evidence", params={"discovery_run_id": run_id})
     assert by_run.status_code == 200, by_run.text
     assert by_run.json()["total"] == 1
 
@@ -162,9 +158,7 @@ def test_evidence_sort_and_pagination(client, repo):
     _catalog(client, repo)
     asset_id = _model_asset_id(client)
 
-    paged = client.get(
-        f"{ASSETS_API}/{asset_id}/evidence", params={"page": 1, "page_size": 2}
-    )
+    paged = client.get(f"{ASSETS_API}/{asset_id}/evidence", params={"page": 1, "page_size": 2})
     assert paged.status_code == 200, paged.text
     body = paged.json()
     assert body["total"] == 1
@@ -172,9 +166,9 @@ def test_evidence_sort_and_pagination(client, repo):
     assert len(body["items"]) == 1
 
     # sorting is accepted across the whole catalog vocabulary
-    openai_asset = client.get(
-        ASSETS_API, params={"asset_type": "AI_SERVICE"}
-    ).json()["items"][0]["id"]
+    openai_asset = client.get(ASSETS_API, params={"asset_type": "AI_SERVICE"}).json()["items"][0][
+        "id"
+    ]
     client.post(f"{SOURCES_API}/{_source(client, repo, name='second-service')}/runs")
     sorted_asc = client.get(
         f"{ASSETS_API}/{openai_asset}/evidence",
@@ -182,9 +176,7 @@ def test_evidence_sort_and_pagination(client, repo):
     )
     assert sorted_asc.status_code == 200, sorted_asc.text
 
-    invalid = client.get(
-        f"{ASSETS_API}/{asset_id}/evidence", params={"sort_by": "nope"}
-    )
+    invalid = client.get(f"{ASSETS_API}/{asset_id}/evidence", params={"sort_by": "nope"})
     assert invalid.status_code == 400
     assert _error(invalid)["code"] == "DISCOVERY_EVIDENCE_QUERY_INVALID"
 

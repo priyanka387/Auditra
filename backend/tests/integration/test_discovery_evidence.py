@@ -21,9 +21,7 @@ TENANT = settings.default_tenant_id
 @pytest.fixture
 def repo(tmp_path):
     (tmp_path / "app").mkdir()
-    (tmp_path / "app" / "main.py").write_text(
-        'import openai\nmodel = "gpt-4o"\n', encoding="utf-8"
-    )
+    (tmp_path / "app" / "main.py").write_text('import openai\nmodel = "gpt-4o"\n', encoding="utf-8")
     (tmp_path / "app" / "client.py").write_text("import openai\n", encoding="utf-8")
     (tmp_path / "requirements.txt").write_text("langchain>=0.1.0\n", encoding="utf-8")
     return tmp_path
@@ -32,7 +30,8 @@ def repo(tmp_path):
 def _source(db, location, name="payments-service"):
     return DiscoverySourceService(db, TENANT).create(
         DiscoverySourceCreate(
-            name=name, source_type=DiscoverySourceType.REPOSITORY,
+            name=name,
+            source_type=DiscoverySourceType.REPOSITORY,
             config={"location": str(location)},
         )
     )
@@ -45,13 +44,16 @@ def _execute(db, source):
 
 def _evidence_rows(db, asset_id):
     from sqlalchemy import select
+
     from app.modules.asset_discovery.models import DiscoveryEvidence
 
     return list(
         db.scalars(
             select(DiscoveryEvidence)
-            .where(DiscoveryEvidence.tenant_id == TENANT,
-                   DiscoveryEvidence.discovered_asset_id == asset_id)
+            .where(
+                DiscoveryEvidence.tenant_id == TENANT,
+                DiscoveryEvidence.discovered_asset_id == asset_id,
+            )
             .order_by(DiscoveryEvidence.file_path, DiscoveryEvidence.line_number)
         )
     )
@@ -59,6 +61,7 @@ def _evidence_rows(db, asset_id):
 
 def _all_evidence_rows(db):
     from sqlalchemy import select
+
     from app.modules.asset_discovery.models import DiscoveryEvidence
 
     return list(
@@ -134,12 +137,8 @@ def test_second_run_appends_evidence_without_mutating_previous_run_rows(db, repo
 
     first = _execute(db, source)
     first_run_id = first.run.id
-    first_seen = {
-        asset.id: asset.first_seen_at for asset in _assets_by_identity(db).values()
-    }
-    snapshot = {
-        (row.id, row.observed_at, row.file_path) for row in _all_evidence_rows(db)
-    }
+    first_seen = {asset.id: asset.first_seen_at for asset in _assets_by_identity(db).values()}
+    snapshot = {(row.id, row.observed_at, row.file_path) for row in _all_evidence_rows(db)}
     assert snapshot  # run 1 produced evidence
 
     second = _execute(db, source)
@@ -160,9 +159,7 @@ def test_second_run_appends_evidence_without_mutating_previous_run_rows(db, repo
 
 def test_skipped_secret_shaped_observation_produces_no_asset_and_no_evidence(db, tmp_path):
     (tmp_path / "app").mkdir()
-    (tmp_path / "app" / "main.py").write_text(
-        'model = "sk-proj-abcdef123"\n', encoding="utf-8"
-    )
+    (tmp_path / "app" / "main.py").write_text('model = "sk-proj-abcdef123"\n', encoding="utf-8")
     source = _source(db, tmp_path, name="secret-shaped-service")
 
     result = _execute(db, source)

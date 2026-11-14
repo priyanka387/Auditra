@@ -662,9 +662,7 @@ class DiscoveredAssetService:
         # fire here; record_asset_run's queries autoflush the pending
         # metadata/timestamp updates and its commit persists everything
         # in one transaction (link row keeps its original first_observed_at)
-        self._record_evidence(
-            evidence, asset.id, observation, observed_at=asset.last_seen_at
-        )
+        self._record_evidence(evidence, asset.id, observation, observed_at=asset.last_seen_at)
         repository.record_asset_run(
             self.db,
             discovered_asset_id=asset.id,
