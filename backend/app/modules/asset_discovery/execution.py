@@ -5,6 +5,7 @@ Orchestrates the flow defined by the master specification:
 ```text
 Discovery Source -> Run (PENDING) -> RUNNING -> connector scan
     -> Discovered Asset Catalog -> COMPLETED | PARTIAL | FAILED
+    -> (COMPLETED | PARTIAL only) Asset Lifecycle evaluation
 ```
 
 Run state transitions are delegated to the existing
@@ -24,6 +25,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.modules.asset_discovery import repository
+from app.modules.asset_discovery.asset_lifecycle import AssetLifecycleService
 from app.modules.asset_discovery.config_validation import validate_source_config
 from app.modules.asset_discovery.connectors import get_connector
 from app.modules.asset_discovery.connectors.base import (
@@ -96,6 +98,7 @@ class DiscoveryExecutionService:
         self.runs = DiscoveryRunService(db, tenant_id, request_id=request_id)
         self.catalog = DiscoveredAssetService(db, tenant_id, request_id=request_id)
         self.reconciliation = AssetReconciliationService(db, tenant_id, request_id=request_id)
+        self.lifecycle = AssetLifecycleService(db, tenant_id, request_id=request_id)
 
     def execute(self, run_id: UUID) -> DiscoveryExecutionResult:
         run = self.runs.get(run_id)  # tenant-scoped; 404 when missing
@@ -209,6 +212,20 @@ class DiscoveryExecutionService:
                 assets_created=catalog.created,
                 assets_updated=catalog.updated,
                 assets_unchanged=catalog.unchanged,
+            )
+
+        # Asset Lifecycle (Sub-feature 8): only now that the run reached a
+        # terminal successful state is it a valid observation boundary.
+        # The run and the catalog are already committed, so a lifecycle
+        # failure can no longer fail the execution: decisions are derived
+        # from persisted data and self-heal on the source's next
+        # completed run.
+        try:
+            self.lifecycle.evaluate_source_lifecycle(source.id, run_id)
+        except Exception:
+            logger.exception(
+                "asset lifecycle evaluation failed",
+                extra=self._log_context(source, run),
             )
 
         self._log_finished(
