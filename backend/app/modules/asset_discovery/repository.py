@@ -1,13 +1,15 @@
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.modules.asset_discovery.enums import DiscoveredAssetStatus, DiscoveryRunStatus
 from app.modules.asset_discovery.errors import (
+    AssetLifecycleError,
     DiscoverySourceNotFoundError,
     DuplicateDiscoveredAssetError,
     DuplicateDiscoverySourceError,
@@ -392,3 +394,102 @@ def list_run_asset_ids(db: Session, tenant_id: UUID, run_id: UUID) -> list[UUID]
             .order_by(DiscoveredAssetRun.discovered_asset_id)
         )
     )
+
+
+# Asset Lifecycle (Sub-feature 8): fixed-size statements only — one scope
+# read, one run-history read and chunked bulk updates, never per-asset
+LIFECYCLE_UPDATE_CHUNK = 500
+
+
+def list_lifecycle_scope(
+    db: Session, tenant_id: UUID, source_id: UUID
+) -> list[tuple[UUID, str, datetime, UUID | None]]:
+    """Every asset of one source with the fields lifecycle evaluates.
+
+    Returned as plain tuples (id, status, last_seen_at, last_seen_run_id)
+    so a large source scope never materializes full ORM rows.
+    """
+    return list(
+        db.execute(
+            select(
+                DiscoveredAsset.id,
+                DiscoveredAsset.status,
+                DiscoveredAsset.last_seen_at,
+                DiscoveredAsset.last_seen_run_id,
+            )
+            .where(
+                DiscoveredAsset.tenant_id == tenant_id,
+                DiscoveredAsset.source_id == source_id,
+            )
+            .order_by(DiscoveredAsset.id)
+        ).all()
+    )
+
+
+def list_source_completed_runs(
+    db: Session, tenant_id: UUID, source_id: UUID
+) -> list[tuple[datetime, UUID]]:
+    """``(completed_at, id)`` of every COMPLETED run of one source.
+
+    Only COMPLETED runs can age assets: FAILED runs carry no usable scan
+    result and PARTIAL scans may have skipped files, so neither is an
+    absence signal. Ascending by completion time, ready for
+    ``CompletedRunIndex``.
+    """
+    return list(
+        db.execute(
+            select(DiscoveryRun.completed_at, DiscoveryRun.id)
+            .where(
+                DiscoveryRun.tenant_id == tenant_id,
+                DiscoveryRun.source_id == source_id,
+                DiscoveryRun.status == DiscoveryRunStatus.COMPLETED.value,
+                DiscoveryRun.completed_at.is_not(None),
+            )
+            .order_by(DiscoveryRun.completed_at, DiscoveryRun.id)
+        ).all()
+    )
+
+
+def apply_lifecycle_transitions(
+    db: Session, tenant_id: UUID, transitions: Mapping[str, Sequence[UUID]]
+) -> int:
+    """Bulk-apply decided lifecycle statuses; returns rows actually changed.
+
+    One UPDATE per target status (chunked) instead of one per asset. Two
+    guards make the write conservative under concurrency: rows already at
+    the target status are skipped, and an IGNORED row is never overwritten
+    even if it was ignored between the read and this write.
+    """
+    changed = 0
+    for target, asset_ids in transitions.items():
+        for start in range(0, len(asset_ids), LIFECYCLE_UPDATE_CHUNK):
+            chunk = asset_ids[start : start + LIFECYCLE_UPDATE_CHUNK]
+            result = db.execute(
+                update(DiscoveredAsset)
+                .where(
+                    DiscoveredAsset.tenant_id == tenant_id,
+                    DiscoveredAsset.id.in_(chunk),
+                    DiscoveredAsset.status != target,
+                    DiscoveredAsset.status != DiscoveredAssetStatus.IGNORED.value,
+                )
+                .values(status=target)
+            )
+            changed += result.rowcount or 0
+    return changed
+
+
+def commit_lifecycle(db: Session) -> None:
+    """Persist lifecycle transitions atomically.
+
+    Lifecycle only ever produces statuses the check constraint allows, so
+    an IntegrityError means the state was invalid: roll back rather than
+    keep a half-applied evaluation (transaction safety for the whole
+    batch — it commits once, at the end).
+    """
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise AssetLifecycleError(
+            "lifecycle result violates discovered asset constraints"
+        ) from None

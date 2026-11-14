@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     usage_batch_size: int = 100
     usage_default_page_size: int = 50
     usage_max_page_size: int = 200
+    # Asset Lifecycle (Sub-feature 8): how many completed discovery runs
+    # of a source may miss an asset before it becomes STALE / DISAPPEARED
+    discovery_lifecycle_stale_after_missed_runs: int = 1
+    discovery_lifecycle_disappeared_after_missed_runs: int = 3
     model_config = SettingsConfigDict(env_prefix="AUDITRA_", env_file=".env")
 
 

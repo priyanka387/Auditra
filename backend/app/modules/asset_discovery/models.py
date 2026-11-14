@@ -150,10 +150,12 @@ class DiscoveredAsset(Base):
             "'WORKFLOW', 'DATASET', 'TOOL', 'DEPLOYMENT', 'ENDPOINT', 'AI_SERVICE')",
             name="ck_discovered_assets_asset_type",
         ),
-        # minimal initial status only; lifecycle states arrive with
-        # Asset Lifecycle (Sub-feature 8) and extend this constraint
+        # lifecycle vocabulary (Asset Lifecycle, Sub-feature 8): ACTIVE is
+        # the observed default, STALE/DISAPPEARED age as completed runs of
+        # the source miss the asset, IGNORED is a sticky intentional
+        # decision that lifecycle evaluation never overwrites
         CheckConstraint(
-            "status IN ('ACTIVE')",
+            "status IN ('ACTIVE', 'STALE', 'DISAPPEARED', 'IGNORED')",
             name="ck_discovered_assets_status",
         ),
         UniqueConstraint(
