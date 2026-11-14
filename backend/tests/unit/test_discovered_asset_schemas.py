@@ -7,7 +7,11 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from app.modules.asset_discovery.enums import AssetType, DiscoveredAssetStatus
+from app.modules.asset_discovery.enums import (
+    AssetType,
+    DiscoveredAssetStatus,
+    ReconciliationStatus,
+)
 from app.modules.asset_discovery.schemas import (
     DiscoveredAssetFilter,
     DiscoveredAssetListResponse,
@@ -25,6 +29,9 @@ def _response_payload(**overrides) -> dict:
         "name": "gpt-4o",
         "normalized_identity": "MODEL_REFERENCE|gpt-4o",
         "status": DiscoveredAssetStatus.ACTIVE,
+        "reconciliation_status": ReconciliationStatus.UNMATCHED,
+        "reconciliation_reason": None,
+        "reconciled_model_id": None,
         "metadata": {"file_path": "app/llm.py", "detection_rule": "model.assignment"},
         "first_seen_at": datetime(2026, 11, 13, 12, 0, tzinfo=UTC),
         "last_seen_at": datetime(2026, 11, 13, 12, 0, tzinfo=UTC),
@@ -42,6 +49,7 @@ def test_filter_defaults():
     assert filters.asset_type is None
     assert filters.source_id is None
     assert filters.status is None
+    assert filters.reconciliation_status is None
     assert filters.search is None
     assert filters.sort_by == "last_seen_at"
     assert filters.sort_order == "desc"
@@ -53,11 +61,13 @@ def test_filter_accepts_supported_filters():
         asset_type=AssetType.TOOL,
         source_id=source_id,
         status=DiscoveredAssetStatus.ACTIVE,
+        reconciliation_status=ReconciliationStatus.MATCHED,
         search="lang",
     )
     assert filters.asset_type is AssetType.TOOL
     assert filters.source_id == source_id
     assert filters.status is DiscoveredAssetStatus.ACTIVE
+    assert filters.reconciliation_status is ReconciliationStatus.MATCHED
     assert filters.search == "lang"
 
 
@@ -66,6 +76,8 @@ def test_filter_rejects_invalid_asset_type_and_status():
         DiscoveredAssetFilter(asset_type="SPREADSHEET")
     with pytest.raises(ValidationError):
         DiscoveredAssetFilter(status="DISAPPEARED")
+    with pytest.raises(ValidationError):
+        DiscoveredAssetFilter(reconciliation_status="SOULMATED")
 
 
 def test_filter_rejects_invalid_pagination():

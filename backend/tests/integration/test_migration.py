@@ -393,8 +393,6 @@ def test_asset_reconciliation_migration_downgrade_and_upgrade(database):
         finally:
             command.upgrade(cfg, "head")
         insp = sa.inspect(engine)
-        assert "reconciliation_status" in {
-            c["name"] for c in insp.get_columns("discovered_assets")
-        }
+        assert "reconciliation_status" in {c["name"] for c in insp.get_columns("discovered_assets")}
     finally:
         engine.dispose()

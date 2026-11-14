@@ -81,9 +81,7 @@ def downgrade() -> None:
     op.drop_index(
         "ix_discovered_assets_tenant_reconciliation_status", table_name="discovered_assets"
     )
-    op.drop_constraint(
-        "ck_discovered_assets_reconciled_model", "discovered_assets", type_="check"
-    )
+    op.drop_constraint("ck_discovered_assets_reconciled_model", "discovered_assets", type_="check")
     op.drop_constraint(
         "ck_discovered_assets_reconciliation_reason", "discovered_assets", type_="check"
     )
