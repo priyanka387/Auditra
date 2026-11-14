@@ -276,3 +276,83 @@ class DiscoveredAssetRun(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class DiscoveryEvidence(Base):
+    """Append-only provenance of one discovery observation (Sub-feature 9).
+
+    One row records where and why one observation contributed to one
+    discovered asset: the source, run and asset it ties together, the
+    signal category (``evidence_type``), the detection rule that fired,
+    the source-relative location and a small structured metadata payload.
+    It never stores raw source content, file contents or credentials —
+    only pointers to *where* and *why*.
+
+    Rows are immutable audit records: they are written only by discovery
+    execution (never updated, never deleted) and survive re-scans,
+    lifecycle transitions (STALE/DISAPPEARED) and reconciliation changes.
+    A later run appends its own rows rather than rewriting history.
+    """
+
+    __tablename__ = "discovery_evidence"
+    __table_args__ = (
+        CheckConstraint(
+            "evidence_type IN ('provider_reference', 'framework_reference', "
+            "'model_reference', 'agent_reference', 'workflow_reference')",
+            name="ck_discovery_evidence_evidence_type",
+        ),
+        CheckConstraint(
+            "line_number IS NULL OR (line_number >= 1 AND line_number <= 10000000)",
+            name="ck_discovery_evidence_line_number",
+        ),
+        # one evidence row per observation per run: identical signals at
+        # the same location in the same run are the same observation
+        Index(
+            "uq_discovery_evidence_observation",
+            "discovered_asset_id",
+            "discovery_run_id",
+            "detection_rule",
+            "file_path",
+            "line_number",
+            unique=True,
+        ),
+        Index(
+            "ix_discovery_evidence_tenant_asset_observed_at",
+            "tenant_id",
+            "discovered_asset_id",
+            "observed_at",
+        ),
+        Index("ix_discovery_evidence_tenant_run", "tenant_id", "discovery_run_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID] = mapped_column()
+    discovered_asset_id: Mapped[UUID] = mapped_column(
+        ForeignKey("discovered_assets.id", ondelete="RESTRICT")
+    )
+    discovery_source_id: Mapped[UUID] = mapped_column(
+        ForeignKey("discovery_sources.id", ondelete="RESTRICT")
+    )
+    discovery_run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("discovery_runs.id", ondelete="RESTRICT")
+    )
+
+    evidence_type: Mapped[str] = mapped_column(String(32))
+    detection_rule: Mapped[str] = mapped_column(String(255))
+    file_path: Mapped[str] = mapped_column(String(1024))
+    line_number: Mapped[int | None] = mapped_column(Integer)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    # rule-generated, secret-free extras only (framework, env_var, key,
+    # provider, ...); raw source snippets are never persisted here
+    metadata_: Mapped[dict] = mapped_column(
+        "metadata",
+        JSON().with_variant(JSONB, "postgresql"),
+        default=dict,
+        server_default=text("'{}'"),
+    )
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

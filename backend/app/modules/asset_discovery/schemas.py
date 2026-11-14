@@ -10,6 +10,7 @@ from app.modules.asset_discovery.enums import (
     DiscoveryRunStatus,
     DiscoverySourceStatus,
     DiscoverySourceType,
+    EvidenceType,
     ReconciliationStatus,
 )
 from app.modules.model_inventory.schemas.model import validate_metadata
@@ -286,4 +287,57 @@ class DiscoveredAssetFilter(BaseModel):
     reconciliation_status: ReconciliationStatus | None = None
     search: str | None = Field(default=None, max_length=255)
     sort_by: str = "last_seen_at"
+    sort_order: str = "desc"
+
+
+class DiscoveryEvidenceResponse(BaseModel):
+    """One append-only evidence record — where and why one observation fired.
+
+    Structured provenance only: never raw source content, file contents
+    or credentials.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    tenant_id: UUID
+    discovered_asset_id: UUID
+    discovery_source_id: UUID
+    discovery_run_id: UUID
+    evidence_type: EvidenceType
+    detection_rule: str
+    file_path: str
+    line_number: int | None = None
+    observed_at: datetime
+    metadata: dict[str, Any] = Field(
+        default_factory=dict, validation_alias=AliasChoices("metadata_", "metadata")
+    )
+    created_at: datetime
+    updated_at: datetime
+
+    @field_validator("observed_at", "created_at", "updated_at", mode="before")
+    @classmethod
+    def _require_timezone(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.tzinfo is None:
+            raise ValueError("timestamp must be timezone-aware")
+        return value
+
+
+class DiscoveryEvidenceListResponse(BaseModel):
+    items: list[DiscoveryEvidenceResponse]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+
+
+class DiscoveryEvidenceFilter(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    page: int = Field(default=1, ge=1)
+    page_size: int = Field(default=25, ge=1, le=100)
+    evidence_type: EvidenceType | None = None
+    detection_rule: str | None = Field(default=None, max_length=255)
+    discovery_run_id: UUID | None = None
+    sort_by: str = "observed_at"
     sort_order: str = "desc"

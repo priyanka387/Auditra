@@ -15,13 +15,16 @@ from app.modules.asset_discovery.enums import (
     DiscoveryRunStatus,
     DiscoverySourceStatus,
     DiscoverySourceType,
+    EvidenceType,
     ReconciliationStatus,
 )
 from app.modules.asset_discovery.errors import (
     InvalidDiscoveredAssetQueryError,
+    InvalidDiscoveryEvidenceQueryError,
     InvalidDiscoveryRunQueryError,
     InvalidDiscoverySourceQueryError,
 )
+from app.modules.asset_discovery.evidence import DiscoveryEvidenceService
 from app.modules.asset_discovery.execution import (
     DiscoveryExecutionResult,
     DiscoveryExecutionService,
@@ -30,6 +33,9 @@ from app.modules.asset_discovery.schemas import (
     DiscoveredAssetFilter,
     DiscoveredAssetListResponse,
     DiscoveredAssetResponse,
+    DiscoveryEvidenceFilter,
+    DiscoveryEvidenceListResponse,
+    DiscoveryEvidenceResponse,
     DiscoveryExecutionIssueResponse,
     DiscoveryExecutionResponse,
     DiscoveryExecutionSourceResponse,
@@ -102,6 +108,20 @@ def _build_assets(**kwargs) -> DiscoveredAssetFilter:
         raise InvalidDiscoveredAssetQueryError(message) from None
 
 
+def _evidence_service(request: Request, db: Session) -> DiscoveryEvidenceService:
+    return DiscoveryEvidenceService(
+        db, settings.default_tenant_id, request_id=request.state.request_id
+    )
+
+
+def _build_evidence(**kwargs) -> DiscoveryEvidenceFilter:
+    try:
+        return DiscoveryEvidenceFilter(**kwargs)
+    except ValidationError as exc:
+        message = exc.errors()[0].get("msg", "invalid query") if exc.errors() else "invalid query"
+        raise InvalidDiscoveryEvidenceQueryError(message) from None
+
+
 def _response(source) -> DiscoverySourceResponse:
     return DiscoverySourceResponse.model_validate(source, from_attributes=True)
 
@@ -112,6 +132,10 @@ def _run_response(run) -> DiscoveryRunResponse:
 
 def _asset_response(asset) -> DiscoveredAssetResponse:
     return DiscoveredAssetResponse.model_validate(asset, from_attributes=True)
+
+
+def _evidence_response(row) -> DiscoveryEvidenceResponse:
+    return DiscoveryEvidenceResponse.model_validate(row, from_attributes=True)
 
 
 def _execution_response(result: DiscoveryExecutionResult) -> DiscoveryExecutionResponse:
@@ -333,3 +357,36 @@ def get_discovered_asset(
     db: Annotated[Session, Depends(get_db)],
 ) -> DiscoveredAssetResponse:
     return _asset_response(_asset_service(request, db).get(asset_id))
+
+
+@assets_router.get("/{asset_id}/evidence", response_model=DiscoveryEvidenceListResponse)
+def list_asset_evidence(
+    asset_id: UUID,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 25,
+    evidence_type: EvidenceType | None = None,
+    detection_rule: Annotated[str | None, Query(max_length=255)] = None,
+    discovery_run_id: UUID | None = None,
+    sort_by: str = "observed_at",
+    sort_order: str = "desc",
+) -> DiscoveryEvidenceListResponse:
+    """List the append-only evidence records for one discovered asset (read-only)."""
+    filters = _build_evidence(
+        page=page,
+        page_size=page_size,
+        evidence_type=evidence_type,
+        detection_rule=detection_rule,
+        discovery_run_id=discovery_run_id,
+        sort_by=sort_by,
+        sort_order=sort_order,
+    )
+    items, total = _evidence_service(request, db).list(asset_id, filters)
+    return DiscoveryEvidenceListResponse(
+        items=[_evidence_response(item) for item in items],
+        page=page,
+        page_size=page_size,
+        total=total,
+        total_pages=ceil(total / page_size) if total else 0,
+    )

@@ -39,6 +39,7 @@ from app.modules.asset_discovery.errors import (
     InvalidDiscoveryRunCountsError,
     InvalidDiscoveryRunTransitionError,
 )
+from app.modules.asset_discovery.evidence import EvidenceDraft, build_evidence
 from app.modules.asset_discovery.models import DiscoveredAsset, DiscoveryRun, DiscoverySource
 from app.modules.asset_discovery.run_lifecycle import RUN_INITIAL_STATUS, can_run_transition
 from app.modules.asset_discovery.schemas import (
@@ -389,6 +390,7 @@ class _Prepared:
     classification: ClassificationResult
     key: DeduplicationKey
     metadata: dict
+    evidence: EvidenceDraft | None = None
     skip_reason: str | None = None
 
 
@@ -512,11 +514,17 @@ class DiscoveredAssetService:
             skip_reason = "name_too_long"
         elif has_secret_shaped_value(name, observation):
             skip_reason = "secret_shaped_value"
+        # evidence is built only for observations that will persist: a
+        # skipped observation can never produce a row, and an unusable
+        # observation raises here — before anything is written — so the
+        # batch-atomic prepare invariant still holds
+        evidence = None if skip_reason is not None else build_evidence(observation)
         return _Prepared(
             observation=observation,
             classification=classification,
             key=key,
             metadata=metadata,
+            evidence=evidence,
             skip_reason=skip_reason,
         )
 
@@ -539,7 +547,9 @@ class DiscoveredAssetService:
         if existing is None:
             existing = self.dedup.find_duplicate(key)
         if existing is not None:
-            asset, outcome = self._refresh(existing, observation, prepared.metadata)
+            asset, outcome = self._refresh(
+                existing, observation, prepared.metadata, prepared.evidence
+            )
         else:
             asset, outcome = self._create(
                 observation,
@@ -547,6 +557,7 @@ class DiscoveredAssetService:
                 key.asset_type,
                 key.normalized_identity,
                 prepared.metadata,
+                prepared.evidence,
             )
         if known is not None:
             # within-batch duplicates and race recovery resolve against
@@ -591,6 +602,7 @@ class DiscoveredAssetService:
         asset_type: str,
         identity: str,
         metadata: dict,
+        evidence: EvidenceDraft,
     ) -> tuple[DiscoveredAsset, ObservationOutcome]:
         now = datetime.now(UTC)
         asset = repository.create_discovered_asset(
@@ -617,9 +629,10 @@ class DiscoveredAssetService:
             )
             if raced is None:
                 raise
-            return self._refresh(raced, observation, metadata)
+            return self._refresh(raced, observation, metadata, evidence)
         # asset row already committed, so the link insert cannot mask a
         # duplicate-identity race
+        self._record_evidence(evidence, asset.id, observation, observed_at=now)
         repository.record_asset_run(
             self.db,
             discovered_asset_id=asset.id,
@@ -634,6 +647,7 @@ class DiscoveredAssetService:
         asset: DiscoveredAsset,
         observation: DiscoveryObservation,
         metadata: dict,
+        evidence: EvidenceDraft,
     ) -> tuple[DiscoveredAsset, ObservationOutcome]:
         # first-seen values win: re-scanning an unchanged source must not
         # churn metadata, while empty stored values are still filled in
@@ -648,6 +662,7 @@ class DiscoveredAssetService:
         # fire here; record_asset_run's queries autoflush the pending
         # metadata/timestamp updates and its commit persists everything
         # in one transaction (link row keeps its original first_observed_at)
+        self._record_evidence(evidence, asset.id, observation, observed_at=asset.last_seen_at)
         repository.record_asset_run(
             self.db,
             discovered_asset_id=asset.id,
@@ -657,6 +672,35 @@ class DiscoveredAssetService:
         outcome = ObservationOutcome.UPDATED if changed else ObservationOutcome.UNCHANGED
         self._log("discovered asset observed", asset, outcome)
         return asset, outcome
+
+    def _record_evidence(
+        self,
+        evidence: EvidenceDraft,
+        asset_id: UUID,
+        observation: DiscoveryObservation,
+        *,
+        observed_at: datetime,
+    ) -> None:
+        """Append this observation's evidence row (uncommitted).
+
+        Called immediately before ``record_asset_run`` so the link
+        commit persists asset + link + evidence together; evidence is
+        append-only and never rewritten.
+        """
+        repository.record_evidence(
+            self.db,
+            id=uuid4(),
+            tenant_id=self.tenant_id,
+            discovered_asset_id=asset_id,
+            discovery_source_id=observation.source_id,
+            discovery_run_id=observation.run_id,
+            evidence_type=evidence.evidence_type,
+            detection_rule=evidence.detection_rule,
+            file_path=evidence.file_path,
+            line_number=evidence.line_number,
+            metadata=evidence.metadata,
+            observed_at=observed_at,
+        )
 
     def _log(self, message: str, asset: DiscoveredAsset, outcome: ObservationOutcome) -> None:
         logger.info(
