@@ -21,6 +21,7 @@ from app.modules.asset_discovery.errors import (
 from app.modules.asset_discovery.models import (
     DiscoveredAsset,
     DiscoveredAssetRun,
+    DiscoveryEvidence,
     DiscoveryRun,
     DiscoverySource,
 )
@@ -366,6 +367,32 @@ def record_asset_run(
     )
     db.execute(stmt)
     db.commit()
+
+
+def record_evidence(db: Session, **fields: object) -> None:
+    """Append one evidence row for an observation; no commit here.
+
+    Evidence is append-only: this insert is the only write path and it
+    never updates or deletes rows. ``ON CONFLICT DO NOTHING`` keeps a
+    duplicate observation race-free (the composite natural key pins one
+    row per asset/run/rule/location), and the caller's subsequent
+    ``record_asset_run`` commit persists asset + link + evidence
+    together.
+    """
+    stmt = (
+        pg_insert(DiscoveryEvidence.__table__)
+        .values(**fields)
+        .on_conflict_do_nothing(
+            index_elements=[
+                "discovered_asset_id",
+                "discovery_run_id",
+                "detection_rule",
+                "file_path",
+                "line_number",
+            ]
+        )
+    )
+    db.execute(stmt)
 
 
 def list_asset_run_ids(db: Session, tenant_id: UUID, asset_id: UUID) -> list[UUID]:
