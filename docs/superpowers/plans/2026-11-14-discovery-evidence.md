@@ -50,7 +50,7 @@
   - `models.DiscoveryEvidence` — table `discovery_evidence`.
   - Migration revision `"0014"`, `down_revision="0013"`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `backend/tests/unit/test_discovery_evidence.py` (new file):
 
@@ -120,12 +120,12 @@ def test_discovery_evidence_migration_downgrade_and_upgrade(database):
         engine.dispose()
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cd backend && uv run pytest tests/unit/test_discovery_evidence.py tests/integration/test_migration.py::test_discovery_evidence_migration_downgrade_and_upgrade -v`
 Expected: FAIL — `ImportError: cannot import name 'EvidenceType'` and `assert False: discovery_evidence`.
 
-- [ ] **Step 3: Implement enum, errors, model, migration, conftest**
+- [x] **Step 3: Implement enum, errors, model, migration, conftest**
 
 - `enums.py`: add `EvidenceType` as specified in Interfaces, with a docstring stating these are the persisted signal categories produced by detection rules and that the exact mechanism lives in `detection_rule`.
 - `errors.py`: add the three error classes as specified (mirror `AssetLifecycleError` block style).
@@ -162,12 +162,12 @@ Columns (in order): `id` (pk, default `uuid4`), `tenant_id`, `discovered_asset_i
 - Migration `0014_discovery_evidence.py` (copy the header/style of `0013_asset_lifecycle.py`, `revision="0014"`, `down_revision="0013"`): `upgrade()` creates the table with `sa.Column`s matching the model exactly (`sa.Uuid()`, `sa.DateTime(timezone=True)`, `sa.JSON().with_variant(postgresql.JSONB, "postgresql")` with `server_default=sa.text("'{}'")`, `created_at`/`updated_at` with `server_default=sa.text("now()")`), the two check constraints, three FKs (`ondelete="RESTRICT"`), `sa.PrimaryKeyConstraint("id")`, then `op.create_index` for the unique index and two query indexes (unique index via `op.create_index(name, table, [...], unique=True)`). `downgrade()` drops the two non-unique indexes, the unique index, then `op.drop_table("discovery_evidence")` (FKs go with the table). Comment: no data migration needed — the table is new and empty on upgrade; downgrade only drops evidence history (acceptable: it is derived from re-runnable scans).
 - `tests/conftest.py`: prepend `discovery_evidence,` to the TRUNCATE table list in the `db` fixture (line ~55).
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cd backend && uv run pytest tests/unit/test_discovery_evidence.py tests/integration/test_migration.py -v`
 Expected: PASS (all migration tests, both new unit tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/app/modules/asset_discovery/enums.py backend/app/modules/asset_discovery/errors.py backend/app/modules/asset_discovery/models.py backend/alembic/versions/0014_discovery_evidence.py backend/tests/conftest.py backend/tests/unit/test_discovery_evidence.py backend/tests/integration/test_migration.py
@@ -188,7 +188,7 @@ git commit -m "feat(asset-discovery): discovery evidence model, enum, errors, an
   - `EvidenceType`-backed frozen dataclass `EvidenceDraft` with fields `evidence_type: str`, `detection_rule: str`, `file_path: str`, `line_number: int | None`, `metadata: dict[str, Any]`.
   - `build_evidence(observation: DiscoveryObservation) -> EvidenceDraft` — raises `InvalidDiscoveryEvidenceError` for unknown observation types, empty/over-long detection rules, invalid line numbers, invalid paths (wrapping `InvalidDiscoveredAssetError` from `validate_file_path`) and invalid metadata.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `backend/tests/unit/test_discovery_evidence.py`:
 
@@ -275,12 +275,12 @@ def test_build_evidence_rejects_empty_or_overlong_detection_rule():
 
 (Replace the awkward conditional in `test_build_evidence_rejects_absolute_path` with a plain `InvalidDiscoveryEvidenceError` assertion — `build_evidence` wraps path failures.)
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cd backend && uv run pytest tests/unit/test_discovery_evidence.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'app.modules.asset_discovery.evidence'`.
 
-- [ ] **Step 3: Implement `build_evidence` in `backend/app/modules/asset_discovery/evidence.py`**
+- [x] **Step 3: Implement `build_evidence` in `backend/app/modules/asset_discovery/evidence.py`**
 
 Module docstring: Discovery Evidence domain (Sub-feature 9) — evidence answers *what was observed and where*; classification answers *what it represents* (no classification logic here); structured fields only, never raw source content; pure functions, no database access (persistence is `DiscoveredAssetService` + `repository.record_evidence`).
 
@@ -300,12 +300,12 @@ def build_evidence(observation: DiscoveryObservation) -> EvidenceDraft: ...
 
 Body decisions (the tests pin these): map `observation.observation_type` through `EvidenceType(...)` catching `ValueError` → `InvalidDiscoveryEvidenceError(f"unsupported evidence type '{...}'")`; `file_path = validate_file_path(observation.file_path)` wrapped so `InvalidDiscoveredAssetError` becomes `InvalidDiscoveryEvidenceError` with the original message; `detection_rule` stripped and checked non-empty and `len <= MAX_DETECTION_RULE_LENGTH`; `line_number` validated exactly like `catalog.build_asset_metadata` does (reject `bool`, non-`int`, `< 1`, `> MAX_LINE_NUMBER` with `"line_number is invalid"` message); `metadata = dict(observation.metadata or {})`, add `"provider": observation.provider` only when truthy, then `validate_metadata(metadata)` wrapped `(TypeError, ValueError)` → `InvalidDiscoveryEvidenceError(f"evidence metadata is invalid: {exc}")`.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cd backend && uv run pytest tests/unit/test_discovery_evidence.py -v`
 Expected: PASS (all tests in the file).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/app/modules/asset_discovery/evidence.py backend/tests/unit/test_discovery_evidence.py
@@ -328,7 +328,7 @@ git commit -m "feat(asset-discovery): evidence builders for discovery observatio
   - `_Prepared.evidence: EvidenceDraft | None` — `None` exactly when `skip_reason` is set.
   - `_create(..., evidence: EvidenceDraft)` and `_refresh(..., evidence: EvidenceDraft)` record one evidence row before `repository.record_asset_run`.
 
-- [ ] **Step 1: Write the failing integration tests**
+- [x] **Step 1: Write the failing integration tests**
 
 New `backend/tests/integration/test_discovery_evidence.py`, using the service/execution helpers pattern from `test_discovery_catalog_execution.py`:
 
@@ -399,12 +399,12 @@ Tests (names are the contract):
 
 Note: do **not** import `list_asset_evidence` (Task 4); use the raw `select` helper above.
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cd backend && uv run pytest tests/integration/test_discovery_evidence.py -v`
 Expected: FAIL — 0 evidence rows found (table exists from Task 1 but nothing writes it); assertions fail with `total == 0`.
 
-- [ ] **Step 3: Implement `record_evidence` and wire the catalog**
+- [x] **Step 3: Implement `record_evidence` and wire the catalog**
 
 - `repository.py`: add `record_evidence` exactly as specified in Interfaces (place it after `record_asset_run`; docstring: append-only insert, no commit, `ON CONFLICT DO NOTHING` keeps a duplicate observation race-free, the caller's `record_asset_run` commit persists asset + link + evidence together). Import `DiscoveryEvidence` in the existing models import block.
 - `service.py`:
@@ -415,17 +415,17 @@ Expected: FAIL — 0 evidence rows found (table exists from Task 1 but nothing w
   - `_create`: after `repository.commit_asset(self.db)` succeeds and **before** `repository.record_asset_run(...)`, call `repository.record_evidence(...)` with `id=uuid4()`, `tenant_id=self.tenant_id`, `discovered_asset_id=asset.id`, `discovery_source_id=observation.source_id`, `discovery_run_id=observation.run_id`, the five `EvidenceDraft` fields (`evidence_type`, `detection_rule`, `file_path`, `line_number`, `metadata=evidence.metadata`), and `observed_at=now` (the same `now` used for `first_seen_at`); the race-recovery path `return self._refresh(raced, observation, metadata, evidence)` forwards `evidence`;
   - `_refresh`: accept `evidence: EvidenceDraft`; before `repository.record_asset_run(...)`, call `repository.record_evidence(...)` with `observed_at=asset.last_seen_at` (already refreshed) and the same field mapping.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cd backend && uv run pytest tests/integration/test_discovery_evidence.py -v`
 Expected: PASS (6 tests).
 
-- [ ] **Step 5: Run the affected regression surface**
+- [x] **Step 5: Run the affected regression surface**
 
 Run: `cd backend && uv run pytest tests/integration -k "discovery or catalog or asset" -v`
 Expected: PASS — existing catalog/dedup/reconciliation/lifecycle integration tests unaffected (evidence is additive).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add backend/app/modules/asset_discovery/repository.py backend/app/modules/asset_discovery/service.py backend/tests/integration/test_discovery_evidence.py
@@ -451,7 +451,7 @@ git commit -m "feat(asset-discovery): catalog persists append-only evidence per 
   - `schemas.py`: `DiscoveryEvidenceResponse` (fields `id, tenant_id, discovered_asset_id, discovery_source_id, discovery_run_id, evidence_type: EvidenceType, detection_rule: str, file_path: str, line_number: int | None, observed_at: datetime, metadata: dict[str, Any] = Field(default_factory=dict), created_at: datetime, updated_at: datetime`, `from_attributes=True`, plus the shared `_require_timezone` validator on `observed_at/created_at/updated_at`), `DiscoveryEvidenceListResponse` (`items, page, page_size, total, total_pages`), `DiscoveryEvidenceFilter` (`extra="forbid"`, `page ge=1`, `page_size ge=1 le=100`, `evidence_type: EvidenceType | None`, `detection_rule: str | None` `max_length=255`, `discovery_run_id: UUID | None`, `sort_by: str = "observed_at"`, `sort_order: str = "desc"`).
   - Route: `GET /api/v1/discovery/assets/{asset_id}/evidence` → `DiscoveryEvidenceListResponse`.
 
-- [ ] **Step 1: Write the failing API tests**
+- [x] **Step 1: Write the failing API tests**
 
 New `backend/tests/api/test_discovery_evidence_api.py`, reusing the `_source`/`_catalog` helpers and `repo` fixture shape from `tests/api/test_discovered_assets_api.py` (main.py with `import openai` + `model = "gpt-4o"`, requirements.txt with `langchain>=0.1.0`, settings.py with `INTERNAL_TOKEN = "hunter2-do-not-leak"`):
 
@@ -471,12 +471,12 @@ Tests:
 5. `test_evidence_response_leaks_no_secret_content` — the settings.py secret never appears: `assert "hunter2-do-not-leak" not in response.text`; also every `file_path` is relative (no leading `/`, no drive letter) and no `metadata` value matches a credential pattern (`^(?:sk|pk|ghp|AKIA)[-_]`).
 6. `test_asset_detail_response_shape_unchanged` — `GET f"{ASSETS_API}/{asset_id}"` still returns the original `ITEM_KEYS` from `test_discovered_assets_api.py` (regression: evidence did not leak into the asset payload).
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cd backend && uv run pytest tests/api/test_discovery_evidence_api.py -v`
 Expected: FAIL — 404 route not found (`DISCOVERY_EVIDENCE_QUERY_INVALID`/envelope absent) or import errors for the new schemas.
 
-- [ ] **Step 3: Implement repository, schemas, service, route**
+- [x] **Step 3: Implement repository, schemas, service, route**
 
 - `repository.py`: `EVIDENCE_SORT_COLUMNS` + `list_asset_evidence` as specified in Interfaces (mirror `list_discovered_assets` structure exactly; import `DiscoveryEvidence` and `DiscoveryEvidenceFilter`).
 - `schemas.py`: three classes as specified in Interfaces (mirror `DiscoveredAssetResponse`/`DiscoveredAssetListResponse`/`DiscoveredAssetFilter` block style; import `EvidenceType`).
@@ -502,17 +502,17 @@ def list_asset_evidence(
 
 Body mirrors `list_discovered_assets`: build filter (ValidationError → `InvalidDiscoveryEvidenceQueryError`), call service, build response with `total_pages=ceil(total / page_size) if total else 0`.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cd backend && uv run pytest tests/api/test_discovery_evidence_api.py -v`
 Expected: PASS (6 tests).
 
-- [ ] **Step 5: Run route regression**
+- [x] **Step 5: Run route regression**
 
 Run: `cd backend && uv run pytest tests/api -v`
 Expected: PASS — all existing API tests (evidence route must not shadow `/assets/{asset_id}`).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add backend/app/modules/asset_discovery/repository.py backend/app/modules/asset_discovery/schemas.py backend/app/modules/asset_discovery/evidence.py backend/app/modules/asset_discovery/routes.py backend/tests/api/test_discovery_evidence_api.py
@@ -530,17 +530,17 @@ git commit -m "feat(asset-discovery): asset evidence read service and nested API
 - Consumes: everything above.
 - Produces: green suite on `feature/asset-discovery` pushed to `origin`.
 
-- [ ] **Step 1: Full test suite**
+- [x] **Step 1: Full test suite**
 
 Run: `cd backend && uv run pytest`
 Expected: PASS — baseline is 900+ tests (last recorded full run: 905 passed) plus this plan's new tests; zero failures, zero new errors.
 
-- [ ] **Step 2: Lint**
+- [x] **Step 2: Lint**
 
 Run: `cd backend && uv run ruff check . && uv run ruff format --check <files touched by this plan>`
 Expected: `ruff check` clean; format check clean for touched files (pre-existing drift in untouched files is out of scope).
 
-- [ ] **Step 3: Final commit and push**
+- [x] **Step 3: Final commit and push**
 
 ```bash
 git add -A
