@@ -16,6 +16,11 @@ class AuditEventType(StrEnum):
     DISCOVERY_SOURCE_CREATED = "discovery_source.created"
     DISCOVERY_SOURCE_UPDATED = "discovery_source.updated"
     DISCOVERY_SOURCE_ARCHIVED = "discovery_source.archived"
+    RISK_CREATED = "risk.created"
+    RISK_UPDATED = "risk.updated"
+    RISK_ARCHIVED = "risk.archived"
+    RISK_CATEGORY_CREATED = "risk_category.created"
+    RISK_CATEGORY_UPDATED = "risk_category.updated"
 
 
 EVENT_TYPE_PATTERN = re.compile(r"^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$")
