@@ -54,23 +54,23 @@
 - Consumes: repo conventions (documented in this plan's Rulings).
 - Produces: committed plan + spec; verified baseline; ledger initialized.
 
-- [ ] **Step 1: Verify workspace state**
+- [x] **Step 1: Verify workspace state**
 
 Run `git status`, `git branch --show-current`. Expected: branch `feature/rf01-risk-register`, only the copied spec file untracked.
 
-- [ ] **Step 2: Install dependencies**
+- [x] **Step 2: Install dependencies**
 
 Run `uv sync` from `backend/` (worktree has no `.venv`). Expected: exits 0.
 
-- [ ] **Step 3: Run the baseline suite**
+- [x] **Step 3: Run the baseline suite**
 
 Run `uv run pytest -q` from `backend/`. Expected: all existing tests pass (PostgreSQL reachable on localhost:5433). If failures pre-exist, stop and report.
 
-- [ ] **Step 4: Commit plan + spec**
+- [x] **Step 4: Commit plan + spec**
 
 Commit this plan file and `docs/private/risk-and-compliance-management.md` as `docs(risk): RF-01 risk register plan and feature spec`. Expected: clean `git status` except future work.
 
-- [ ] **Step 5: Initialize ledger**
+- [x] **Step 5: Initialize ledger**
 
 Run `sdd-workspace` for this plan; create `progress.md` with first line `# SDD ledger — plan: docs/superpowers/plans/2026-11-16-rf01-risk-register.md`; write pre-flight rows (shared interfaces: Task 2 models → Task 4 schemas → Task 5 service → Task 6 routes; no conflicts found — field names consistent throughout).
 
@@ -101,7 +101,7 @@ Run `sdd-workspace` for this plan; create `progress.md` with first line `# SDD l
   - Migration revision `"0015"`, `down_revision="0014"`, both tables + constraints/indexes, reversible downgrade.
   - conftest TRUNCATE list includes `risks, risk_categories`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `backend/tests/unit/test_risk_models.py`:
 - `test_risk_status_values` — `RiskStatus` members equal exactly `{open, in_review, accepted}` (string values).
@@ -111,19 +111,19 @@ Run `sdd-workspace` for this plan; create `progress.md` with first line `# SDD l
 
 Extend `backend/tests/integration/test_migration.py` with `test_risk_tables_exist` — reflects `risk_categories` and `risks` via `sa.inspect`, asserting columns `slug`/`is_system` and `category_id`/`archived_at` exist plus FK to `discovered_assets`.
 
-- [ ] **Step 2: Run and watch them fail**
+- [x] **Step 2: Run and watch them fail**
 
 Run `uv run pytest tests/unit/test_risk_models.py tests/integration/test_migration.py -q`. Expected: FAIL/ERROR — `ModuleNotFoundError: app.modules.risk` (feature missing, not typo).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Create `enums.py`, `errors.py`, `models.py`, `__init__.py` per Interfaces; write migration `0015_risk_register.py` (explicit `op.create_table` style matching `0014`); add `risks, risk_categories` to conftest TRUNCATE.
 
-- [ ] **Step 4: Run and watch them pass**
+- [x] **Step 4: Run and watch them pass**
 
 Run `uv run pytest tests/unit/test_risk_models.py tests/integration/test_migration.py -q`. Expected: PASS. Then run the full suite `uv run pytest -q` — expected all green (conftest rebuilds the test DB from migrations each session).
 
-- [ ] **Step 5: Lint + commit**
+- [x] **Step 5: Lint + commit**
 
 `uv run ruff check .` clean; `uv run ruff format` on touched files. Commit: `feat(risk): risk domain models, enums, errors and migration 0015 (RF-01)`.
 
@@ -141,26 +141,26 @@ Run `uv run pytest tests/unit/test_risk_models.py tests/integration/test_migrati
 - Produces: `RISK_CATEGORIES` — exactly 21 `(name, slug, description)` tuples: Safety `safety`, Security `security`, Privacy `privacy`, Fairness / Bias `fairness-bias`, Reliability `reliability`, Accuracy `accuracy`, Robustness `robustness`, Explainability `explainability`, Transparency `transparency`, Accountability `accountability`, Data Quality `data-quality`, Data Governance `data-governance`, Legal / Regulatory `legal-regulatory`, Third-Party / Vendor `third-party-vendor`, Operational `operational`, Reputational `reputational`, Financial `financial`, Human Oversight `human-oversight`, Misuse / Abuse `misuse-abuse`, Model Risk `model-risk`, Other `other` (plan §27 list + `Other` from plan §10 taxonomy).
 - Produces: `seed_risk_categories(db: Session, tenant_id: UUID) -> int` — inserts missing system categories (`is_system=True`, `is_active=True`), skips existing by `(tenant_id, slug)`, flushes, returns number newly inserted. Idempotent by construction and by unique constraint.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `tests/integration/test_risk_seed.py`:
 - `test_seed_risk_categories_creates_full_taxonomy` — call once: returns 21, DB has 21 rows for tenant, all `is_system`, slugs unique, names match spec list.
 - `test_seed_risk_categories_is_idempotent` — call twice: second returns 0, DB still has 21 rows.
 - `test_seed_risk_categories_scopes_by_tenant` — seed for a second tenant id: that tenant gets its own 21 rows; default tenant unaffected (still 21).
 
-- [ ] **Step 2: Run and watch them fail**
+- [x] **Step 2: Run and watch them fail**
 
 `uv run pytest tests/integration/test_risk_seed.py -q`. Expected: ERROR — `ModuleNotFoundError: app.modules.risk.seed`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `app/modules/risk/seed.py` with `RISK_CATEGORIES` + `seed_risk_categories`; wire into `app/seed.py` `__main__` block (after `seed_reference_data`, using `settings.default_tenant_id`) — not into `seed_reference_data` itself (that seeds global, tenant-less reference data).
 
-- [ ] **Step 4: Run and watch them pass**
+- [x] **Step 4: Run and watch them pass**
 
 `uv run pytest tests/integration/test_risk_seed.py -q` → PASS. Full suite `uv run pytest -q` → green.
 
-- [ ] **Step 5: Lint + commit**
+- [x] **Step 5: Lint + commit**
 
 ruff clean. Commit: `feat(risk): idempotent system risk taxonomy seed (RF-01)`.
 
@@ -187,7 +187,7 @@ ruff clean. Commit: `feat(risk): idempotent system risk taxonomy seed (RF-01)`.
   - `RiskCategoryListResponse`: `items`, `page`, `page_size`, `total`, `total_pages`.
   - `RiskCategoryFilter` (extra="forbid"): `page`, `page_size`, `search`, `is_active` optional, `is_system` optional, `sort_by` (whitelist `name`, `created_at`, `updated_at`), `sort_order`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/unit/test_risk_schemas.py`:
 - `test_risk_create_strips_title_and_owner`
@@ -203,19 +203,19 @@ ruff clean. Commit: `feat(risk): idempotent system risk taxonomy seed (RF-01)`.
 - `test_risk_category_create_rejects_bad_slug` (slug "Bad Slug!" → ValidationError)
 - `test_risk_category_create_requires_name`
 
-- [ ] **Step 2: Run and watch them fail**
+- [x] **Step 2: Run and watch them fail**
 
 `uv run pytest tests/unit/test_risk_schemas.py -q`. Expected: ERROR — `ModuleNotFoundError: app.modules.risk.schemas`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `schemas.py` per Interfaces (slugify helper: lowercase, non-alphanumeric → hyphens, collapse/trim hyphens).
 
-- [ ] **Step 4: Run and watch them pass**
+- [x] **Step 4: Run and watch them pass**
 
 `uv run pytest tests/unit/test_risk_schemas.py -q` → PASS. Full suite → green.
 
-- [ ] **Step 5: Lint + commit**
+- [x] **Step 5: Lint + commit**
 
 ruff clean. Commit: `feat(risk): risk and risk-category schemas with validation (RF-01)`.
 
@@ -247,7 +247,7 @@ ruff clean. Commit: `feat(risk): risk and risk-category schemas with validation 
     - `resolve_refs(risks: list[Risk]) -> dict[UUID, RiskCategoryRef]` + asset names helper (or equivalent) so routes can build responses without N+1 — fetch categories/assets for a page in at most 2 extra queries.
   - Error added in Task 2's errors file during this task if missing: `RiskArchivedError` (RISK_ARCHIVED, 409).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/integration/test_risk_category_service.py`:
 - `test_create_category_persists_and_generates_slug`
@@ -275,19 +275,19 @@ ruff clean. Commit: `feat(risk): risk and risk-category schemas with validation 
 - `test_list_risks_pagination_and_total`
 - `test_list_risks_invalid_sort_returns_400`
 
-- [ ] **Step 2: Run and watch them fail**
+- [x] **Step 2: Run and watch them fail**
 
 `uv run pytest tests/integration/test_risk_service.py tests/integration/test_risk_category_service.py -q`. Expected: ERROR — `ModuleNotFoundError: app.modules.risk.repository` / service.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `repository.py` (tenant-scoped getters, `_conditions` filter builders, SORT_COLUMNS whitelists, count+offset/limit lists — mirror `asset_discovery/repository.py`), `service.py` (two services, audit integration, same-transaction `record_event` then single `db.commit()`), extend `audit/enums.py` with the three risk event types, add `RiskArchivedError` to `risk/errors.py`.
 
-- [ ] **Step 4: Run and watch them pass**
+- [x] **Step 4: Run and watch them pass**
 
 `uv run pytest tests/integration/test_risk_service.py tests/integration/test_risk_category_service.py -q` → PASS. Full suite → green.
 
-- [ ] **Step 5: Lint + commit**
+- [x] **Step 5: Lint + commit**
 
 ruff clean. Commit: `feat(risk): risk and category services with tenant isolation and audit (RF-01)`.
 
@@ -316,7 +316,7 @@ ruff clean. Commit: `feat(risk): risk and category services with tenant isolatio
   - Errors use the existing envelope (`DomainError` handler): 404 `RISK_NOT_FOUND`/`RISK_CATEGORY_NOT_FOUND`/`RISK_ASSET_NOT_FOUND`, 409 duplicates/archived, 400 query errors, 422 `VALIDATION_ERROR` for malformed bodies.
   - Query-enum parsing failures (bad status) surface as 422 VALIDATION_ERROR via FastAPI — acceptable (matches how `DiscoverySourceStatus` query params behave).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/api/test_risks_api.py`:
 - `test_create_risk_returns_201_and_persists` (category seeded first)
@@ -342,19 +342,19 @@ ruff clean. Commit: `feat(risk): risk and category services with tenant isolatio
 - `test_patch_category_disables_it`
 - `test_patch_unknown_category_returns_404`
 
-- [ ] **Step 2: Run and watch them fail**
+- [x] **Step 2: Run and watch them fail**
 
 `uv run pytest tests/api/test_risks_api.py tests/api/test_risk_categories_api.py -q`. Expected: FAIL with 404 `NOT_FOUND` (route missing) — TestClient raises starlette 404s / assertion errors because endpoints don't exist.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `routes.py` with `router = APIRouter(prefix="/api/v1/risks")` and `categories_router = APIRouter(prefix="/api/v1/risk-categories")`; service factories `_service(request, db)` / `_category_service(request, db)` passing `settings.default_tenant_id`, `request_id`, `actor=None`; filter builders wrapping `ValidationError` → `InvalidRiskQueryError` (mirrors `_build` pattern); response builders resolving category/asset refs; register both routers in `create_app()`.
 
-- [ ] **Step 4: Run and watch them pass**
+- [x] **Step 4: Run and watch them pass**
 
 `uv run pytest tests/api/test_risks_api.py tests/api/test_risk_categories_api.py -q` → PASS. Full suite → green.
 
-- [ ] **Step 5: Lint + commit**
+- [x] **Step 5: Lint + commit**
 
 ruff clean. Commit: `feat(risk): risk register and category REST APIs (RF-01)`.
 
@@ -371,7 +371,7 @@ ruff clean. Commit: `feat(risk): risk register and category REST APIs (RF-01)`.
 - Consumes: everything from Tasks 2–6.
 - Produces: green end-to-end proof; documented endpoints; pushed branch + PR.
 
-- [ ] **Step 1: Write the failing/verifying end-to-end test**
+- [x] **Step 1: Write the failing/verifying end-to-end test**
 
 `tests/e2e/test_risk_register_acceptance.py` — `test_full_risk_register_journey`:
 1. seed risk categories;
@@ -382,11 +382,11 @@ ruff clean. Commit: `feat(risk): risk register and category REST APIs (RF-01)`.
 6. archive via `RiskService.archive` → excluded from default list, still fetchable by id, `archived=true` filter finds it;
 7. assert audit events for the journey exist with `resource_type="risk"` in order.
 
-- [ ] **Step 2: Run it**
+- [x] **Step 2: Run it**
 
 `uv run pytest tests/e2e/test_risk_register_acceptance.py -q` → PASS. If RED: debug with systematic-debugging before proceeding.
 
-- [ ] **Step 3: Full acceptance sweep**
+- [x] **Step 3: Full acceptance sweep**
 
 - `uv run pytest -q` → entire suite green (no Asset Discovery regression).
 - `uv run ruff check .` → clean; `uv run ruff format --check .` on touched files.
@@ -394,11 +394,11 @@ ruff clean. Commit: `feat(risk): risk register and category REST APIs (RF-01)`.
 - `uv run python -m app.seed` twice → idempotent (no duplicate categories).
 - Manually verify OpenAPI: start app briefly or use TestClient to assert `/api/v1/risks` and `/api/v1/risk-categories` appear in `app.openapi()` paths.
 
-- [ ] **Step 4: Update README**
+- [x] **Step 4: Update README**
 
 Add risk endpoints to the README endpoint list (`/api/v1/risks`, `/api/v1/risks/{risk_id}`, `/api/v1/risk-categories`, `/api/v1/risk-categories/{category_id}`) and a one-line RF-01 mention.
 
-- [ ] **Step 5: Commit, push, open PR**
+- [x] **Step 5: Commit, push, open PR**
 
 Commit `feat(risk): risk register acceptance journey and docs (RF-01)`. Check off tasks in this plan file (`docs: check off RF-01 plan tasks`). Push `feature/rf01-risk-register` to `origin`. Open PR against `main` with a summary of RF-01 scope + rulings. Expected: PR created; all checks (local suite) green.
 
