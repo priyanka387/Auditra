@@ -289,9 +289,10 @@ def test_openapi_contract(client):
         paths["/api/v1/models/{model_id}/versions/{version_id}"]
     )
     assert {"post"} <= set(paths["/api/v1/models/{model_id}/versions/{version_id}/lifecycle"])
-    # includes the Discovered Asset Catalog read endpoints (Sub-feature 4)
-    # and the nested evidence listing (Sub-feature 9)
-    assert sum(len(methods) for methods in paths.values()) == 67
+    # includes the Discovered Asset Catalog read endpoints (Sub-feature 4),
+    # the nested evidence listing (Sub-feature 9) and the RF-01 risk
+    # register + taxonomy endpoints
+    assert sum(len(methods) for methods in paths.values()) == 76
 
     schemas = app.openapi()["components"]["schemas"]
     assert {"ModelVersionCreate", "ModelVersionResponse"} <= set(schemas)

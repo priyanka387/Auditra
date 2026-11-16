@@ -17,6 +17,7 @@ from app.core.db import SessionLocal
 from app.main import app
 from app.modules.model_inventory.models import Model, ModelProvider, ModelType, ModelVersion
 from app.modules.model_inventory.services import ModelService
+from app.modules.risk.seed import seed_risk_categories
 from app.seed import seed_reference_data
 
 TEST_DB_NAME = "auditra_test"
@@ -106,5 +107,7 @@ def parent_version(db, parent_model):
 @pytest.fixture
 def client(db):
     seed_reference_data(db)
+    # RF-01: the API's tenant expects the 21 system risk categories to exist
+    seed_risk_categories(db, settings.default_tenant_id)
     db.commit()
     yield TestClient(app)
