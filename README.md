@@ -69,6 +69,13 @@ Endpoints: `/health`, `/api/v1/models`, `/api/v1/models/{model_id}`,
 `/api/v1/agents/{agent_id}/models`,
 `/api/v1/model-usage/events`, `/api/v1/model-usage/events/{event_id}`,
 `/api/v1/model-usage/stats`, `/api/v1/audit/events`,
-`/api/v1/audit/events/{event_id}` (OpenAPI at `/docs`).
+`/api/v1/audit/events/{event_id}`, `/api/v1/risks`,
+`/api/v1/risks/{risk_id}`, `/api/v1/risk-categories`,
+`/api/v1/risk-categories/{category_id}` (OpenAPI at `/docs`).
+
+Risk & Compliance Management: RF-01 ships the risk register and its
+per-tenant taxonomy — risks are created, reviewed, searched and soft-archived
+against the 21 seeded system categories and discovered AI assets, with every
+mutation recorded in the audit trail.
 
 Lint: `uv run ruff check .` and `uv run ruff format .` (from `backend/`).

@@ -471,6 +471,73 @@ def test_asset_lifecycle_migration_downgrade_and_upgrade(database):
         engine.dispose()
 
 
+def test_risk_register_migration_downgrade_and_upgrade(database):
+    """RF-01 adds the risk register tables (risk_categories, risks)."""
+    cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    engine = sa.create_engine(settings.database_url, poolclass=sa.pool.NullPool)
+    try:
+        insp = sa.inspect(engine)
+        assert insp.has_table("risk_categories")
+        assert insp.has_table("risks")
+
+        category_columns = {c["name"] for c in insp.get_columns("risk_categories")}
+        for name in ("id", "tenant_id", "name", "description", "slug", "is_system", "is_active"):
+            assert name in category_columns, name
+        risk_columns = {c["name"] for c in insp.get_columns("risks")}
+        for name in (
+            "id",
+            "tenant_id",
+            "title",
+            "description",
+            "category_id",
+            "source",
+            "asset_id",
+            "owner",
+            "team",
+            "status",
+            "created_by",
+            "updated_by",
+            "archived_at",
+        ):
+            assert name in risk_columns, name
+
+        unique = {c["name"]: c for c in insp.get_unique_constraints("risk_categories")}
+        assert unique["uq_risk_categories_tenant_slug"]["column_names"] == ["tenant_id", "slug"]
+
+        indexes = {i["name"] for i in insp.get_indexes("risks")}
+        for name in (
+            "ix_risks_tenant_status",
+            "ix_risks_tenant_category",
+            "ix_risks_tenant_asset",
+            "ix_risks_tenant_owner",
+            "ix_risks_tenant_archived",
+            "ix_risks_tenant_updated",
+        ):
+            assert name in indexes, name
+
+        fks = {fk["referred_table"]: fk for fk in insp.get_foreign_keys("risks")}
+        assert set(fks) == {"risk_categories", "discovered_assets"}
+        assert all(fk["options"].get("ondelete") == "RESTRICT" for fk in fks.values())
+
+        checks = {c["name"] for c in insp.get_check_constraints("risks")}
+        assert "ck_risks_status" in checks
+        assert "ck_risks_source" in checks
+
+        try:
+            command.downgrade(cfg, "0014")
+            insp = sa.inspect(engine)
+            assert not insp.has_table("risks")
+            assert not insp.has_table("risk_categories")
+            assert insp.has_table("discovery_evidence")
+        finally:
+            command.upgrade(cfg, "head")
+        insp = sa.inspect(engine)
+        assert insp.has_table("risks")
+        assert insp.has_table("risk_categories")
+    finally:
+        engine.dispose()
+
+
 def test_discovery_evidence_migration_downgrade_and_upgrade(database):
     """SF9 adds the append-only discovery evidence table."""
     cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
