@@ -467,7 +467,7 @@ ruff clean. Commit: `feat(assessment): risk assessment and template REST APIs (R
 
 `uv run pytest tests/e2e/test_risk_assessment_acceptance.py -q` → PASS. If RED: debug with systematic-debugging before proceeding.
 
-- [ ] **Step 3: Full acceptance sweep**
+- [x] **Step 3: Full acceptance sweep**
 
 - `uv run pytest -q` → entire suite green (no RF-01/Asset Discovery regression).
 - `uv run ruff check .` → clean; `uv run ruff format --check .` on touched files.
@@ -479,7 +479,7 @@ ruff clean. Commit: `feat(assessment): risk assessment and template REST APIs (R
 
 Add assessment endpoints to the README endpoint list (`/api/v1/risk-assessments` + subroutes, `/api/v1/assessment-templates`) and a one-line RF-02 mention.
 
-- [ ] **Step 5: Commit, push, open PR**
+- [x] **Step 5: Commit, push, open PR**
 
 Commit `feat(assessment): AI risk assessment workflow acceptance and docs (RF-02)`. Check off tasks in this plan file (`docs: check off RF-02 plan tasks`). Push `feature/rf02-ai-risk-assessment` to `origin`. Open PR against `main` with a summary of RF-02 scope + rulings. Expected: PR created; local suite green.
 
