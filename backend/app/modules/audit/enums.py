@@ -21,6 +21,16 @@ class AuditEventType(StrEnum):
     RISK_ARCHIVED = "risk.archived"
     RISK_CATEGORY_CREATED = "risk_category.created"
     RISK_CATEGORY_UPDATED = "risk_category.updated"
+    ASSESSMENT_CREATED = "assessment.created"
+    ASSESSMENT_STARTED = "assessment.started"
+    ASSESSMENT_RESPONSE_UPDATED = "assessment.response_updated"
+    ASSESSMENT_SUBMITTED = "assessment.submitted"
+    ASSESSMENT_REVIEW_STARTED = "assessment.review_started"
+    ASSESSMENT_APPROVED = "assessment.approved"
+    ASSESSMENT_REJECTED = "assessment.rejected"
+    ASSESSMENT_REVISED = "assessment.revised"
+    ASSESSMENT_TEMPLATE_CREATED = "assessment_template.created"
+    ASSESSMENT_TEMPLATE_UPDATED = "assessment_template.updated"
 
 
 EVENT_TYPE_PATTERN = re.compile(r"^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$")
