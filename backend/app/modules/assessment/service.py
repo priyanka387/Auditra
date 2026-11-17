@@ -10,6 +10,7 @@ revision row instead of mutating history.
 """
 
 import logging
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -132,7 +133,13 @@ def _validate_response(question: AssessmentQuestion, value) -> None:
         # strict bool: an int must never pass as an answer (1 != True here)
         valid = isinstance(value, bool)
     elif kind == QuestionType.NUMBER.value:
-        valid = isinstance(value, int | float) and not isinstance(value, bool)
+        # jsonb cannot store NaN/Infinity — reject them here as a 400
+        # instead of letting the flush blow up as a 500
+        valid = (
+            isinstance(value, int | float)
+            and not isinstance(value, bool)
+            and (isinstance(value, int) or math.isfinite(value))
+        )
     if not valid:
         raise InvalidAssessmentResponseError(
             f"response does not match question '{question.key}' of type '{kind}'"

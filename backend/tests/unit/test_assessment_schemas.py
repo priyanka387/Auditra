@@ -11,6 +11,7 @@ from app.modules.assessment.schemas import (
     AssessmentApproveRequest,
     AssessmentRejectRequest,
     AssessmentResponseUpdate,
+    AssessmentRevisionRequest,
     AssessmentTemplateCreate,
     AssessmentTemplateUpdate,
     RiskAssessmentCreate,
@@ -115,6 +116,16 @@ def test_reject_request_requires_non_blank_reason():
         AssessmentRejectRequest(reason="   ")
     with pytest.raises(ValidationError):
         AssessmentRejectRequest()
+
+
+def test_revision_request_rejects_extra_fields():
+    # every write schema forbids extras — a stray body field must 422,
+    # not be silently dropped (Ruling 15 out-of-scope guard)
+    AssessmentRevisionRequest()  # empty body stays valid
+    with pytest.raises(ValidationError):
+        AssessmentRevisionRequest(score=10)
+    with pytest.raises(ValidationError):
+        AssessmentRevisionRequest(reason="carry this forward")
 
 
 def test_reject_request_strips_reason_and_reviewer():

@@ -365,6 +365,23 @@ def test_reject_without_reason_returns_422(client, db):
     assert _error(response)["code"] == "VALIDATION_ERROR"
 
 
+def test_revision_extra_body_field_returns_422(client, db):
+    # the revision body is empty-by-design; stray fields must 422 instead
+    # of being silently dropped
+    created = _create(client, db)
+    _answer_required(client, created["id"])
+    client.post(f"{API}/{created['id']}/submit")
+    client.post(f"{API}/{created['id']}/start-review")
+    client.post(
+        f"{API}/{created['id']}/reject",
+        json={"reason": "needs work"},
+    )
+
+    response = client.post(f"{API}/{created['id']}/revision", json={"score": 3})
+    assert response.status_code == 422
+    assert _error(response)["code"] == "VALIDATION_ERROR"
+
+
 def test_reject_with_reason_then_revision_201(client, db):
     created = _create(client, db)
     assessment_id = created["id"]

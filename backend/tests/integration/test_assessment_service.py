@@ -434,6 +434,17 @@ def test_save_response_with_wrong_type_rejected(db, risk, template):
             )
         assert exc.value.http_status == 400
 
+    # NaN/Infinity are legal JSON tokens but un-storable in jsonb — they
+    # must surface as the same 400, never a 500 at flush time
+    for value in (float("nan"), float("inf")):
+        with pytest.raises(InvalidAssessmentResponseError) as exc:
+            service.save_response(
+                assessment.id,
+                questions["governance-review"].id,
+                AssessmentResponseUpdate(response=value),
+            )
+        assert exc.value.http_status == 400
+
     # nothing was persisted for any rejected answer
     assert (
         db.scalar(

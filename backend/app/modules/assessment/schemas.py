@@ -269,6 +269,8 @@ class AssessmentApproveRequest(BaseModel):
 class AssessmentRevisionRequest(BaseModel):
     """Empty body allowed — reserved for future revision notes."""
 
+    model_config = ConfigDict(extra="forbid")
+
 
 # --- assessment responses -----------------------------------------------------
 
