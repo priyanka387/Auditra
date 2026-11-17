@@ -62,23 +62,23 @@
 - Consumes: repo conventions (documented in this plan's Rulings).
 - Produces: committed plan; verified baseline; ledger initialized.
 
-- [ ] **Step 1: Verify workspace state**
+- [x] **Step 1: Verify workspace state**
 
 Run `git status`, `git branch --show-current`. Expected: branch `feature/rf02-ai-risk-assessment`, only this plan file untracked.
 
-- [ ] **Step 2: Install dependencies**
+- [x] **Step 2: Install dependencies**
 
 Run `uv sync` (with `UV_LINK_MODE=copy`) from `backend/`. Expected: exits 0.
 
-- [ ] **Step 3: Run the baseline suite**
+- [x] **Step 3: Run the baseline suite**
 
 Run `uv run pytest -q` from `backend/`. Expected: all existing tests pass (PostgreSQL reachable on localhost:5433). If failures pre-exist, stop and report.
 
-- [ ] **Step 4: Commit plan**
+- [x] **Step 4: Commit plan**
 
 Commit this plan file as `docs(risk): RF-02 AI risk assessment plan`. Expected: clean `git status` except future work.
 
-- [ ] **Step 5: Initialize ledger**
+- [x] **Step 5: Initialize ledger**
 
 Run `sdd-workspace` for this plan; create `progress.md` with first line `# SDD ledger — plan: docs/superpowers/plans/2026-11-17-rf02-ai-risk-assessment.md`; write pre-flight rows (shared interfaces: Task 2 models/enums/errors → Task 3 seed → Task 4 schemas → Task 5 service → Task 6 routes → Task 7 e2e; no conflicts found — names fixed by this plan's Interfaces blocks).
 
@@ -111,7 +111,7 @@ Run `sdd-workspace` for this plan; create `progress.md` with first line `# SDD l
   - Migration revision `"0016"`, `down_revision="0015"`, all five tables + constraints/indexes, reversible downgrade.
   - conftest TRUNCATE list includes the five new tables (children before parents).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `backend/tests/unit/test_assessment_models.py`:
 - `test_assessment_status_values` — `AssessmentStatus` members equal exactly `{draft, in_progress, submitted, under_review, approved, rejected}`.
@@ -122,19 +122,19 @@ Run `sdd-workspace` for this plan; create `progress.md` with first line `# SDD l
 
 Extend `backend/tests/integration/test_migration.py` with `test_assessment_tables_exist` — reflects all five tables via `sa.inspect`, asserting columns (`template_version`, `response_value`, `question_type`, `display_order`) and FKs to `risks`, `assessment_templates`, `assessment_sections`, `risk_assessments`, `assessment_questions`.
 
-- [ ] **Step 2: Run and watch them fail**
+- [x] **Step 2: Run and watch them fail**
 
 Run `uv run pytest tests/unit/test_assessment_models.py tests/integration/test_migration.py -q`. Expected: FAIL/ERROR — `ModuleNotFoundError: app.modules.assessment` (feature missing, not typo).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Create `__init__.py`, `enums.py`, `errors.py`, `models.py` per Interfaces; write migration `0016_ai_risk_assessment.py` (explicit `op.create_table` style matching `0015`); add the five tables to conftest TRUNCATE.
 
-- [ ] **Step 4: Run and watch them pass**
+- [x] **Step 4: Run and watch them pass**
 
 Run `uv run pytest tests/unit/test_assessment_models.py tests/integration/test_migration.py -q`. Expected: PASS. Then run the full suite `uv run pytest -q` — expected all green (conftest rebuilds the test DB from migrations each session).
 
-- [ ] **Step 5: Lint + commit**
+- [x] **Step 5: Lint + commit**
 
 `uv run ruff check .` clean; `uv run ruff format` on touched files. Commit: `feat(assessment): assessment domain models, enums, errors and migration 0016 (RF-02)`.
 
@@ -171,26 +171,26 @@ Run `uv run pytest tests/unit/test_assessment_models.py tests/integration/test_m
     - `governance-review` (NUMBER, optional, validation_rules {"min": 0, "max": 100}): "How many governance reviews has the system undergone in the last 12 months?"
   - Every question: `display_order` sequential within its section; optional `description`/`help_text` where noted; `options` as `[{"value": ..., "label": ...}, ...]` for select questions (plan §15), `None` otherwise; `validation_rules` only on `governance-review`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/integration/test_assessment_seed.py`:
 - `test_seed_creates_general_template_with_sections_and_questions` — call once: returns 1; template exists with `key`, `is_system=True`, `version=1`, `assessment_type="initial"`; exactly 7 sections ordered by `display_order`; question count matches the content list; every `QuestionType` value appears at least once; select questions carry options with `value`/`label` keys; required flags match content.
 - `test_seed_is_idempotent` — call twice: second returns 0; still exactly 1 template / 7 sections / same question count.
 - `test_seed_scopes_by_tenant` — seed for a second tenant id: that tenant gets its own template; default tenant unaffected.
 
-- [ ] **Step 2: Run and watch them fail**
+- [x] **Step 2: Run and watch them fail**
 
 Run `uv run pytest tests/integration/test_assessment_seed.py -q`. Expected: ERROR — `ModuleNotFoundError: app.modules.assessment.seed`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `app/modules/assessment/seed.py` with the content constants + `seed_assessment_templates`; wire into `app/seed.py` `__main__` block after `seed_risk_categories` (tenant-scoped, not inside `seed_reference_data`); add template seeding to the conftest `client` fixture.
 
-- [ ] **Step 4: Run and watch them pass**
+- [x] **Step 4: Run and watch them pass**
 
 `uv run pytest tests/integration/test_assessment_seed.py -q` → PASS. Full suite `uv run pytest -q` → green.
 
-- [ ] **Step 5: Lint + commit**
+- [x] **Step 5: Lint + commit**
 
 ruff clean. Commit: `feat(assessment): idempotent General AI Risk Assessment template seed (RF-02)`.
 
@@ -226,7 +226,7 @@ ruff clean. Commit: `feat(assessment): idempotent General AI Risk Assessment tem
   - `RiskAssessmentListResponse`: `items, page, page_size, total, total_pages`.
   - `RiskAssessmentFilter` (extra="forbid"): `page`, `page_size` (le 100), `search` (max 255), `risk_id`, `asset_id`, `template_id`, `assessment_type`, `status`, `assessor`, `reviewer`, `created_from`, `created_to` (datetime, tz-aware; validator: from ≤ to), `sort_by` whitelist (`created_at`, `updated_at`, `status`), `sort_order` default `desc`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/unit/test_assessment_schemas.py`:
 - `test_template_create_strips_name_and_autosizes_key` (name " General AI Risk Assessment " → key `general-ai-risk-assessment`)
@@ -246,19 +246,19 @@ ruff clean. Commit: `feat(assessment): idempotent General AI Risk Assessment tem
 - `test_filter_rejects_inverted_date_range` (created_from > created_to → ValidationError)
 - `test_filter_rejects_unknown_sort_field` is a service-level concern — schema only whitelists via literal? (schema keeps `sort_by: str`; whitelist enforced in repository → covered in Task 5)
 
-- [ ] **Step 2: Run and watch them fail**
+- [x] **Step 2: Run and watch them fail**
 
 Run `uv run pytest tests/unit/test_assessment_schemas.py -q`. Expected: ERROR — `ModuleNotFoundError: app.modules.assessment.schemas`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `schemas.py` per Interfaces (slugify helper reuses the RF-01 regex approach; tz-aware timestamp validators mirror `risk/schemas.py`).
 
-- [ ] **Step 4: Run and watch them pass**
+- [x] **Step 4: Run and watch them pass**
 
 `uv run pytest tests/unit/test_assessment_schemas.py -q` → PASS. Full suite → green.
 
-- [ ] **Step 5: Lint + commit**
+- [x] **Step 5: Lint + commit**
 
 ruff clean. Commit: `feat(assessment): assessment and template schemas with validation (RF-02)`.
 
@@ -297,7 +297,7 @@ ruff clean. Commit: `feat(assessment): assessment and template schemas with vali
     - `resolve_refs(assessments) -> tuple[dict[UUID, Risk], dict[UUID, DiscoveredAsset], dict[UUID, AssessmentTemplate]]` — batch lookup for list responses (at most 3 queries).
   - Audit: `AuditEventType` gains `ASSESSMENT_CREATED/STARTED/RESPONSE_UPDATED/SUBMITTED/REVIEW_STARTED/APPROVED/REJECTED/REVISED` + `ASSESSMENT_TEMPLATE_CREATED/UPDATED` (values `assessment.created` … `assessment_template.updated`; all match `EVENT_TYPE_PATTERN`).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/integration/test_assessment_template_service.py` (fixture: seed templates):
 - `test_create_template_persists_and_derives_key`
@@ -342,19 +342,19 @@ ruff clean. Commit: `feat(assessment): assessment and template schemas with vali
 - `test_list_assessments_invalid_sort_returns_400`
 - `test_multiple_assessments_per_risk_are_preserved` (create 3 on one risk → 3 rows, distinct ids — §8 history)
 
-- [ ] **Step 2: Run and watch them fail**
+- [x] **Step 2: Run and watch them fail**
 
 Run `uv run pytest tests/integration/test_assessment_service.py tests/integration/test_assessment_template_service.py -q`. Expected: ERROR — `ModuleNotFoundError: app.modules.assessment.repository` / service.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `repository.py` (tenant-scoped getters, `_conditions` filter builders incl. the risk-join for `asset_id`, `SORT_COLUMNS` whitelists for both entities, count+offset/limit lists, response upsert helper, batch `get_*_by_ids` — mirror `risk/repository.py`), `service.py` (two services + the state machine helpers `_require_status`, `_audit`, `completion_percentage`), extend `audit/enums.py` with the ten event types.
 
-- [ ] **Step 4: Run and watch them pass**
+- [x] **Step 4: Run and watch them pass**
 
 `uv run pytest tests/integration/test_assessment_service.py tests/integration/test_assessment_template_service.py -q` → PASS. Full suite → green.
 
-- [ ] **Step 5: Lint + commit**
+- [x] **Step 5: Lint + commit**
 
 ruff clean. Commit: `feat(assessment): assessment workflow services with state machine, validation and audit (RF-02)`.
 
@@ -386,7 +386,7 @@ ruff clean. Commit: `feat(assessment): assessment workflow services with state m
   - `PATCH /api/v1/assessment-templates/{template_id}` — 200 `AssessmentTemplateResponse`.
   - Errors use the existing envelope: 404 `ASSESSMENT_NOT_FOUND`/`ASSESSMENT_QUESTION_NOT_FOUND`/`ASSESSMENT_TEMPLATE_NOT_FOUND`/`RISK_NOT_FOUND`, 409 state/incomplete/inactive/duplicate, 400 response/query invalid, 422 `VALIDATION_ERROR` for malformed bodies. Unknown query params → 400 (extra="forbid" + `_reject_unknown_query` pattern).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/api/test_risk_assessments_api.py` (fixtures seed templates + create a risk with asset via API):
 - `test_create_assessment_returns_201_with_detail_shape` (sections present, completion_percentage 0, status draft)
@@ -417,19 +417,19 @@ ruff clean. Commit: `feat(assessment): assessment workflow services with state m
 - `test_patch_template_unknown_returns_404`
 - `test_patch_template_rejects_version_field` (422 VALIDATION_ERROR)
 
-- [ ] **Step 2: Run and watch them fail**
+- [x] **Step 2: Run and watch them fail**
 
 Run `uv run pytest tests/api/test_risk_assessments_api.py tests/api/test_assessment_templates_api.py -q`. Expected: FAIL with 404 NOT_FOUND (routes missing).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `routes.py` with `router = APIRouter(prefix="/api/v1/risk-assessments")` and `templates_router = APIRouter(prefix="/api/v1/assessment-templates")`; service factories passing `settings.default_tenant_id`, `request_id`, `actor=None`; `_build` filter wrappers (ValidationError → domain query error); detail builders that resolve risk/asset/template refs and nest sections/questions/responses without N+1 (service `get_detail`/`resolve_refs`); register both routers in `create_app()`.
 
-- [ ] **Step 4: Run and watch them pass**
+- [x] **Step 4: Run and watch them pass**
 
 `uv run pytest tests/api/test_risk_assessments_api.py tests/api/test_assessment_templates_api.py -q` → PASS. Full suite → green.
 
-- [ ] **Step 5: Lint + commit**
+- [x] **Step 5: Lint + commit**
 
 ruff clean. Commit: `feat(assessment): risk assessment and template REST APIs (RF-02)`.
 
@@ -446,7 +446,7 @@ ruff clean. Commit: `feat(assessment): risk assessment and template REST APIs (R
 - Consumes: everything from Tasks 2–6.
 - Produces: green end-to-end proof; documented endpoints; pushed branch + PR.
 
-- [ ] **Step 1: Write the failing/verifying end-to-end test**
+- [x] **Step 1: Write the failing/verifying end-to-end test**
 
 `tests/e2e/test_risk_assessment_acceptance.py`:
 - `test_full_risk_assessment_journey` (plan §47 Step 12 / §48 DoD):
@@ -463,7 +463,7 @@ ruff clean. Commit: `feat(assessment): risk assessment and template REST APIs (R
   11. assert list filters (`risk_id`, `status`) return the expected subsets.
 - `test_cross_tenant_assessment_isolation` — assessment + template + risk created for tenant B are all unreachable from tenant A via service (404s), and tenant B's assessment cannot be submitted/edited from tenant A (§43).
 
-- [ ] **Step 2: Run it**
+- [x] **Step 2: Run it**
 
 `uv run pytest tests/e2e/test_risk_assessment_acceptance.py -q` → PASS. If RED: debug with systematic-debugging before proceeding.
 
@@ -475,7 +475,7 @@ ruff clean. Commit: `feat(assessment): risk assessment and template REST APIs (R
 - `uv run python -m app.seed` twice → idempotent (one template, 21 categories, no duplicates).
 - Verify OpenAPI: assert `/api/v1/risk-assessments` and `/api/v1/assessment-templates` appear in `app.openapi()` paths.
 
-- [ ] **Step 4: Update README**
+- [x] **Step 4: Update README**
 
 Add assessment endpoints to the README endpoint list (`/api/v1/risk-assessments` + subroutes, `/api/v1/assessment-templates`) and a one-line RF-02 mention.
 
