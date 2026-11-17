@@ -71,11 +71,28 @@ Endpoints: `/health`, `/api/v1/models`, `/api/v1/models/{model_id}`,
 `/api/v1/model-usage/stats`, `/api/v1/audit/events`,
 `/api/v1/audit/events/{event_id}`, `/api/v1/risks`,
 `/api/v1/risks/{risk_id}`, `/api/v1/risk-categories`,
-`/api/v1/risk-categories/{category_id}` (OpenAPI at `/docs`).
+`/api/v1/risk-categories/{category_id}`, `/api/v1/risk-assessments`,
+`/api/v1/risk-assessments/{assessment_id}`,
+`/api/v1/risk-assessments/{assessment_id}/responses/{question_id}`,
+`/api/v1/risk-assessments/{assessment_id}/submit`,
+`/api/v1/risk-assessments/{assessment_id}/start-review`,
+`/api/v1/risk-assessments/{assessment_id}/approve`,
+`/api/v1/risk-assessments/{assessment_id}/reject`,
+`/api/v1/risk-assessments/{assessment_id}/revision`,
+`/api/v1/assessment-templates`, `/api/v1/assessment-templates/{template_id}`
+(OpenAPI at `/docs`).
 
 Risk & Compliance Management: RF-01 ships the risk register and its
 per-tenant taxonomy — risks are created, reviewed, searched and soft-archived
 against the 21 seeded system categories and discovered AI assets, with every
 mutation recorded in the audit trail.
+
+RF-02 adds the AI risk assessment workflow: answer the seeded General AI
+Risk Assessment questionnaire against a risk, submit it, run the strict
+review state machine (draft → in_progress → submitted → under_review →
+approved | rejected), fork rejected assessments into revisions that carry
+the answers forward, and browse completion percentages with list filters —
+all tenant-isolated and fully audited. A custom template catalog
+(create/patch) complements the seeded system template.
 
 Lint: `uv run ruff check .` and `uv run ruff format .` (from `backend/`).

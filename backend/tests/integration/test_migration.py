@@ -720,3 +720,43 @@ def test_discovery_evidence_migration_downgrade_and_upgrade(database):
             assert sa.inspect(engine).has_table("discovery_evidence")
     finally:
         engine.dispose()
+
+
+def test_assessment_migration_downgrade_and_upgrade(database):
+    """RF-02 adds the AI risk assessment tables (migration 0016)."""
+    cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    engine = sa.create_engine(settings.database_url, poolclass=sa.pool.NullPool)
+    assessment_tables = (
+        "assessment_templates",
+        "assessment_sections",
+        "assessment_questions",
+        "risk_assessments",
+        "assessment_responses",
+    )
+    try:
+        insp = sa.inspect(engine)
+        for table in assessment_tables:
+            assert insp.has_table(table), table
+        # RF-01's tables stay untouched by 0016
+        assert insp.has_table("risks")
+        assert insp.has_table("risk_categories")
+
+        template_columns = {c["name"] for c in insp.get_columns("assessment_templates")}
+        assert "is_system" in template_columns
+        assert "is_active" in template_columns
+
+        try:
+            command.downgrade(cfg, "0015")
+            insp = sa.inspect(engine)
+            for table in assessment_tables:
+                assert not insp.has_table(table), table
+            assert insp.has_table("risks")
+            assert insp.has_table("risk_categories")
+        finally:
+            command.upgrade(cfg, "head")
+        insp = sa.inspect(engine)
+        for table in assessment_tables:
+            assert insp.has_table(table), table
+        assert insp.has_table("risks")
+    finally:
+        engine.dispose()
