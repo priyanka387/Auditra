@@ -538,6 +538,150 @@ def test_risk_register_migration_downgrade_and_upgrade(database):
         engine.dispose()
 
 
+def test_assessment_tables_exist(database):
+    """RF-02 adds the AI risk assessment tables (migration 0016)."""
+    cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    engine = sa.create_engine(settings.database_url, poolclass=sa.pool.NullPool)
+    assessment_tables = (
+        "assessment_templates",
+        "assessment_sections",
+        "assessment_questions",
+        "risk_assessments",
+        "assessment_responses",
+    )
+    try:
+        insp = sa.inspect(engine)
+        for table in assessment_tables:
+            assert insp.has_table(table), table
+
+        template_columns = {c["name"] for c in insp.get_columns("assessment_templates")}
+        for name in (
+            "id",
+            "tenant_id",
+            "key",
+            "name",
+            "description",
+            "assessment_type",
+            "version",
+            "is_system",
+            "is_active",
+        ):
+            assert name in template_columns, name
+
+        section_columns = {c["name"] for c in insp.get_columns("assessment_sections")}
+        for name in ("id", "template_id", "title", "display_order", "is_active"):
+            assert name in section_columns, name
+
+        question_columns = {c["name"] for c in insp.get_columns("assessment_questions")}
+        for name in (
+            "id",
+            "section_id",
+            "key",
+            "question_text",
+            "question_type",
+            "required",
+            "display_order",
+            "options",
+            "validation_rules",
+            "help_text",
+        ):
+            assert name in question_columns, name
+
+        assessment_columns = {c["name"] for c in insp.get_columns("risk_assessments")}
+        for name in (
+            "id",
+            "tenant_id",
+            "risk_id",
+            "template_id",
+            "template_version",
+            "assessment_type",
+            "status",
+            "assessor",
+            "reviewer",
+            "submitted_at",
+            "reviewed_at",
+            "approved_at",
+            "rejected_at",
+            "rejection_reason",
+            "revision_number",
+            "original_assessment_id",
+        ):
+            assert name in assessment_columns, name
+
+        response_columns = {c["name"] for c in insp.get_columns("assessment_responses")}
+        for name in (
+            "id",
+            "assessment_id",
+            "question_id",
+            "response_value",
+            "answered_by",
+        ):
+            assert name in response_columns, name
+
+        unique = {c["name"]: c for c in insp.get_unique_constraints("assessment_responses")}
+        assert unique["uq_assessment_responses_assessment_question"]["column_names"] == [
+            "assessment_id",
+            "question_id",
+        ]
+        template_unique = {
+            c["name"]: c for c in insp.get_unique_constraints("assessment_templates")
+        }
+        assert template_unique["uq_assessment_templates_tenant_key"]["column_names"] == [
+            "tenant_id",
+            "key",
+        ]
+        question_unique = {
+            c["name"]: c for c in insp.get_unique_constraints("assessment_questions")
+        }
+        assert question_unique["uq_assessment_questions_section_key"]["column_names"] == [
+            "section_id",
+            "key",
+        ]
+
+        assessment_fks = {
+            fk["referred_table"]: fk for fk in insp.get_foreign_keys("risk_assessments")
+        }
+        assert set(assessment_fks) == {"risks", "assessment_templates", "risk_assessments"}
+        assert all(fk["options"].get("ondelete") == "RESTRICT" for fk in assessment_fks.values())
+        response_fks = {
+            fk["referred_table"] for fk in insp.get_foreign_keys("assessment_responses")
+        }
+        assert response_fks == {"risk_assessments", "assessment_questions"}
+
+        checks = {c["name"] for c in insp.get_check_constraints("risk_assessments")}
+        assert "ck_risk_assessments_status" in checks
+        assert "ck_risk_assessments_type" in checks
+        assert "ck_risk_assessments_revision" in checks
+        question_checks = {c["name"] for c in insp.get_check_constraints("assessment_questions")}
+        assert "ck_assessment_questions_type" in question_checks
+
+        indexes = {i["name"] for i in insp.get_indexes("risk_assessments")}
+        for name in (
+            "ix_risk_assessments_tenant_risk",
+            "ix_risk_assessments_tenant_status",
+            "ix_risk_assessments_tenant_template",
+            "ix_risk_assessments_tenant_assessor",
+            "ix_risk_assessments_tenant_reviewer",
+            "ix_risk_assessments_tenant_created",
+            "ix_risk_assessments_original",
+        ):
+            assert name in indexes, name
+
+        try:
+            command.downgrade(cfg, "0015")
+            insp = sa.inspect(engine)
+            for table in assessment_tables:
+                assert not insp.has_table(table), table
+            assert insp.has_table("risks")
+        finally:
+            command.upgrade(cfg, "head")
+        insp = sa.inspect(engine)
+        for table in assessment_tables:
+            assert insp.has_table(table), table
+    finally:
+        engine.dispose()
+
+
 def test_discovery_evidence_migration_downgrade_and_upgrade(database):
     """SF9 adds the append-only discovery evidence table."""
     cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))

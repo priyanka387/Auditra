@@ -53,7 +53,9 @@ def db(database):
         session.rollback()
         session.execute(
             sa.text(
-                "TRUNCATE discovery_evidence, discovered_asset_runs, discovered_assets, discovery_runs, discovery_sources, risks, risk_categories, audit_events, model_usage_events, model_discovery, agent_model_associations, agents, applications, "
+                "TRUNCATE discovery_evidence, discovered_asset_runs, discovered_assets, discovery_runs, discovery_sources, "
+                "assessment_responses, risk_assessments, assessment_questions, assessment_sections, assessment_templates, "
+                "risks, risk_categories, audit_events, model_usage_events, model_discovery, agent_model_associations, agents, applications, "
                 "model_deployments, deployment_endpoints, model_versions, "
                 "model_tag_links, model_tags, models, model_types, "
                 "model_providers RESTART IDENTITY CASCADE"
