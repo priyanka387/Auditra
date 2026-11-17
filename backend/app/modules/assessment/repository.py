@@ -164,6 +164,28 @@ def get_questions_for_template(db: Session, template_id: UUID) -> list[Assessmen
     )
 
 
+def get_questions_for_templates(
+    db: Session, template_ids: set[UUID]
+) -> dict[UUID, list[AssessmentQuestion]]:
+    """Questions grouped by template (completion % over a list page)."""
+    if not template_ids:
+        return {}
+    rows = db.execute(
+        select(AssessmentQuestion, AssessmentSection.template_id)
+        .join(AssessmentSection, AssessmentQuestion.section_id == AssessmentSection.id)
+        .where(AssessmentSection.template_id.in_(template_ids))
+        .order_by(
+            AssessmentSection.display_order,
+            AssessmentQuestion.display_order,
+            AssessmentQuestion.id,
+        )
+    ).all()
+    grouped: dict[UUID, list[AssessmentQuestion]] = {tid: [] for tid in template_ids}
+    for question, template_id in rows:
+        grouped.setdefault(template_id, []).append(question)
+    return grouped
+
+
 def get_question_for_template(
     db: Session, template_id: UUID, question_id: UUID
 ) -> AssessmentQuestion | None:
@@ -278,6 +300,21 @@ def get_responses(db: Session, assessment_id: UUID) -> dict[UUID, AssessmentResp
         select(AssessmentResponse).where(AssessmentResponse.assessment_id == assessment_id)
     )
     return {row.question_id: row for row in rows}
+
+
+def get_responses_for_assessments(
+    db: Session, assessment_ids: set[UUID]
+) -> dict[UUID, dict[UUID, AssessmentResponse]]:
+    """Answers for many assessments, keyed assessment → question → row."""
+    if not assessment_ids:
+        return {}
+    rows = db.scalars(
+        select(AssessmentResponse).where(AssessmentResponse.assessment_id.in_(assessment_ids))
+    )
+    grouped: dict[UUID, dict[UUID, AssessmentResponse]] = {aid: {} for aid in assessment_ids}
+    for row in rows:
+        grouped.setdefault(row.assessment_id, {})[row.question_id] = row
+    return grouped
 
 
 def upsert_response(

@@ -11,6 +11,8 @@ from app.core.errors import (
     unhandled_error_handler,
     validation_error_handler,
 )
+from app.modules.assessment.routes import router as assessment_router
+from app.modules.assessment.routes import templates_router as assessment_template_router
 from app.modules.asset_discovery.routes import assets_router as discovery_assets_router
 from app.modules.asset_discovery.routes import router as discovery_source_router
 from app.modules.asset_discovery.routes import runs_router as discovery_runs_router
@@ -109,6 +111,8 @@ def create_app() -> FastAPI:
     app.include_router(discovery_assets_router)
     app.include_router(risk_router)
     app.include_router(risk_category_router)
+    app.include_router(assessment_router)
+    app.include_router(assessment_template_router)
     app.include_router(audit_router)
     return app
 

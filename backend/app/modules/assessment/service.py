@@ -642,6 +642,25 @@ class AssessmentService:
         answered = sum(1 for question in required if _is_answered(responses.get(question.id)))
         return round(answered * 100 / len(required))
 
+    def completion_map(self, assessments: Sequence[RiskAssessment]) -> dict[UUID, int]:
+        """Completion % for a whole list page in two batched queries."""
+        if not assessments:
+            return {}
+        questions_by_template = repository.get_questions_for_templates(
+            self.db, {a.template_id for a in assessments}
+        )
+        responses_by_assessment = repository.get_responses_for_assessments(
+            self.db, {a.id for a in assessments}
+        )
+        return {
+            assessment.id: self.completion_percentage(
+                assessment,
+                questions_by_template.get(assessment.template_id, []),
+                responses_by_assessment.get(assessment.id, {}),
+            )
+            for assessment in assessments
+        }
+
     def _entity(self, assessment_id: UUID) -> RiskAssessment:
         assessment = repository.get_assessment(self.db, self.tenant_id, assessment_id)
         if assessment is None:
