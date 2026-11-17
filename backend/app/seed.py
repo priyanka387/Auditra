@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.db import SessionLocal
+from app.modules.assessment.seed import seed_assessment_templates
 from app.modules.model_inventory.models import ModelProvider, ModelType
 from app.modules.risk.seed import seed_risk_categories
 
@@ -61,4 +62,7 @@ if __name__ == "__main__":
         # RF-01: per-tenant system risk taxonomy; idempotent, so re-running
         # the seed never duplicates categories
         seed_risk_categories(db, settings.default_tenant_id)
+        # RF-02: per-tenant system assessment template; idempotent, so
+        # re-running the seed never duplicates the questionnaire
+        seed_assessment_templates(db, settings.default_tenant_id)
         db.commit()

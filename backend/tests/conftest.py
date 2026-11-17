@@ -15,6 +15,7 @@ from alembic import command
 from app.core.config import settings
 from app.core.db import SessionLocal
 from app.main import app
+from app.modules.assessment.seed import seed_assessment_templates
 from app.modules.model_inventory.models import Model, ModelProvider, ModelType, ModelVersion
 from app.modules.model_inventory.services import ModelService
 from app.modules.risk.seed import seed_risk_categories
@@ -111,5 +112,7 @@ def client(db):
     seed_reference_data(db)
     # RF-01: the API's tenant expects the 21 system risk categories to exist
     seed_risk_categories(db, settings.default_tenant_id)
+    # RF-02: assessments run against the system template seeded per tenant
+    seed_assessment_templates(db, settings.default_tenant_id)
     db.commit()
     yield TestClient(app)
