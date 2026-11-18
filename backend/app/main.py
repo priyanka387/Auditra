@@ -29,6 +29,8 @@ from app.modules.model_inventory.domain.errors import DomainError
 from app.modules.model_usage.routes import router as model_usage_router
 from app.modules.risk.routes import categories_router as risk_category_router
 from app.modules.risk.routes import router as risk_router
+from app.modules.risk_scoring.routes import router as risk_scoring_router
+from app.modules.risk_scoring.routes import scores_router as risk_score_router
 
 logger = logging.getLogger("auditra.http")
 
@@ -113,6 +115,8 @@ def create_app() -> FastAPI:
     app.include_router(risk_category_router)
     app.include_router(assessment_router)
     app.include_router(assessment_template_router)
+    app.include_router(risk_scoring_router)
+    app.include_router(risk_score_router)
     app.include_router(audit_router)
     return app
 
