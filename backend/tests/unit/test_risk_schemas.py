@@ -1,12 +1,21 @@
 """Unit tests: RF-01 risk and risk-category schemas."""
 
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
 
 from app.modules.risk.enums import RiskSource, RiskStatus
-from app.modules.risk.schemas import RiskCategoryCreate, RiskCreate, RiskFilter, RiskUpdate
+from app.modules.risk.schemas import (
+    RiskCategoryCreate,
+    RiskCreate,
+    RiskFilter,
+    RiskResponse,
+    RiskScoreSummary,
+    RiskUpdate,
+)
+from app.modules.risk_scoring.enums import RiskSeverity
 
 CATEGORY_ID = uuid4()
 
@@ -124,3 +133,72 @@ def test_risk_category_create_rejects_bad_slug():
 def test_risk_category_create_requires_name():
     with pytest.raises(ValidationError):
         RiskCategoryCreate()
+
+
+# --- RF-03 score summary -----------------------------------------------------
+
+
+def test_risk_score_summary_rejects_naive_timestamps():
+    with pytest.raises(ValidationError):
+        RiskScoreSummary(
+            likelihood=4,
+            impact=5,
+            calculated_score=20,
+            effective_score=20,
+            severity="critical",
+            priority=1,
+            is_override=False,
+            scored_at=datetime(2026, 11, 18, 12, 0, 0),  # noqa: DTZ001 - naive is the point
+        )
+
+
+def test_risk_score_summary_accepts_aware_timestamp_and_enum():
+    summary = RiskScoreSummary(
+        likelihood=4,
+        impact=5,
+        calculated_score=20,
+        effective_score=20,
+        severity="critical",
+        priority=1,
+        is_override=False,
+        scored_at=datetime.now(UTC),
+    )
+    assert summary.severity == RiskSeverity.CRITICAL
+    assert summary.effective_score == 20
+
+
+def test_risk_response_defaults_current_score_to_none():
+    response = RiskResponse.model_validate(
+        {
+            "id": uuid4(),
+            "tenant_id": uuid4(),
+            "title": "Unscored risk",
+            "category_id": CATEGORY_ID,
+            "category": {"id": CATEGORY_ID, "name": "Security", "slug": "security"},
+            "source": "manual",
+            "status": "open",
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
+        }
+    )
+    # unscored is null, never a fabricated low (plan §28)
+    assert response.current_score is None
+
+
+def test_risk_filter_accepts_scoring_fields():
+    filters = RiskFilter(
+        severity="critical",
+        priority=1,
+        scored=True,
+        likelihood=4,
+        impact=5,
+        framework_id=uuid4(),
+    )
+    assert filters.severity == RiskSeverity.CRITICAL
+    assert filters.priority == 1
+    assert filters.scored is True
+
+
+def test_risk_filter_rejects_invalid_priority():
+    with pytest.raises(ValidationError):
+        RiskFilter(priority=0)

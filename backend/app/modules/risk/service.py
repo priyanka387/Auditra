@@ -35,6 +35,8 @@ from app.modules.risk.schemas import (
     RiskFilter,
     RiskUpdate,
 )
+from app.modules.risk_scoring import repository as risk_scoring_repository
+from app.modules.risk_scoring.models import RiskScore
 
 logger = logging.getLogger("auditra.risk")
 
@@ -323,6 +325,17 @@ class RiskService:
         categories = repository.get_categories_by_ids(self.db, self.tenant_id, category_ids)
         assets = repository.get_assets_by_ids(self.db, self.tenant_id, asset_ids)
         return categories, assets
+
+    def resolve_scores(self, risks: Sequence[Risk]) -> dict[UUID, RiskScore]:
+        """Current scores for a page of risks in one query (RF-03 §16).
+
+        Routes attach these as ``current_score`` without touching the
+        cross-module repository directly; a missing entry means unscored.
+        """
+        risk_ids = {risk.id for risk in risks}
+        return risk_scoring_repository.get_current_scores_by_risk_ids(
+            self.db, self.tenant_id, risk_ids
+        )
 
     def _entity(self, risk_id: UUID) -> Risk:
         risk = repository.get_risk(self.db, self.tenant_id, risk_id)

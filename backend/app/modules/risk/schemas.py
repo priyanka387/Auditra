@@ -14,6 +14,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.modules.risk.enums import RiskSource, RiskStatus
+from app.modules.risk_scoring.enums import RiskSeverity
 
 MAX_TITLE = 255
 MAX_DESCRIPTION = 10000
@@ -45,6 +46,33 @@ class RiskAssetRef(BaseModel):
 
     id: UUID
     name: str
+
+
+class RiskScoreSummary(BaseModel):
+    """Scalar snapshot of a risk's current score for register rows (RF-03 §16).
+
+    Deliberately scalar-only (no framework ref) so ``risk/schemas.py``
+    depends on nothing but the scoring enums. ``null`` on ``RiskResponse``
+    means unscored — never a fabricated low rating (plan §28).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    likelihood: int
+    impact: int
+    calculated_score: int
+    effective_score: int
+    severity: RiskSeverity
+    priority: int
+    is_override: bool
+    scored_at: datetime
+
+    @field_validator("scored_at", mode="before")
+    @classmethod
+    def _require_timezone(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("timestamp must be timezone-aware")
+        return value
 
 
 class RiskCreate(BaseModel):
@@ -138,6 +166,7 @@ class RiskResponse(BaseModel):
     created_by: str | None = None
     updated_by: str | None = None
     archived_at: datetime | None = None
+    current_score: RiskScoreSummary | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -173,6 +202,14 @@ class RiskFilter(BaseModel):
     # so the register's default view stays clean while archived risks
     # remain queryable (RF-01 §20)
     archived: bool = False
+    # RF-03 scoring filters: any score filter implies an inner-filter on
+    # the joined current score (unscored risks cannot match)
+    severity: RiskSeverity | None = None
+    priority: int | None = Field(default=None, ge=1)
+    scored: bool | None = None
+    likelihood: int | None = None
+    impact: int | None = None
+    framework_id: UUID | None = None
     sort_by: str = "updated_at"
     sort_order: str = "desc"
 
