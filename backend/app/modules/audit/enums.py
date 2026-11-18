@@ -31,6 +31,11 @@ class AuditEventType(StrEnum):
     ASSESSMENT_REVISED = "assessment.revised"
     ASSESSMENT_TEMPLATE_CREATED = "assessment_template.created"
     ASSESSMENT_TEMPLATE_UPDATED = "assessment_template.updated"
+    RISK_SCORE_CREATED = "risk.score_created"
+    RISK_SCORE_RECALCULATED = "risk.score_recalculated"
+    RISK_SCORE_OVERRIDDEN = "risk.score_overridden"
+    SCORING_FRAMEWORK_CREATED = "scoring_framework.created"
+    SCORING_FRAMEWORK_UPDATED = "scoring_framework.updated"
 
 
 EVENT_TYPE_PATTERN = re.compile(r"^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$")
