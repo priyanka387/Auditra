@@ -60,23 +60,23 @@
 - Consumes: repo conventions (documented in this plan's Rulings).
 - Produces: committed plan; verified baseline; initialized ledger.
 
-- [ ] **Step 1: Verify workspace state**
+- [x] **Step 1: Verify workspace state**
 
 Run `git status`, `git branch --show-current`. Expected: branch `feature/rf03-risk-scoring`, only this plan file untracked.
 
-- [ ] **Step 2: Install dependencies**
+- [x] **Step 2: Install dependencies**
 
 Run `uv sync` (with `UV_LINK_MODE=copy`) from `backend/`. Expected: exits 0.
 
-- [ ] **Step 3: Run the baseline suite**
+- [x] **Step 3: Run the baseline suite**
 
 Run `uv run pytest -q` from `backend/`. Expected: all existing tests pass (PostgreSQL reachable on localhost:5433). If failures pre-exist, stop and report.
 
-- [ ] **Step 4: Commit plan**
+- [x] **Step 4: Commit plan**
 
 Commit this plan file as `docs(risk): RF-03 risk scoring plan`. Expected: clean `git status` except future work.
 
-- [ ] **Step 5: Initialize ledger**
+- [x] **Step 5: Initialize ledger**
 
 Run `sdd-workspace` for this plan; create `progress.md` with first line `# SDD ledger — plan: docs/superpowers/plans/2026-11-18-rf03-risk-scoring.md`; write the pre-flight shared-interface rows (Task 2 models/enums/errors → Task 3 seed → Task 4 engine → Task 5 schemas → Task 6 service → Task 7 routes → Task 8 register integration → Task 9 e2e; plus Task 6 → Task 8: `risk.service` consuming `risk_scoring.repository.get_current_scores_by_risk_ids`, and Task 7 → Task 8: OpenAPI count bumped only in Task 7 — no conflicts, names fixed by this plan's Interfaces blocks) and the baseline test count.
 
@@ -109,7 +109,7 @@ Run `sdd-workspace` for this plan; create `progress.md` with first line `# SDD l
   - Migration revision `"0017"`, `down_revision="0016"`, file `0017_risk_scoring.py`, docstring header `"""risk scoring (RF-03)"""`, explicit `op.create_table` style matching `0016`, reversible downgrade (drop indexes, then tables, children first).
   - conftest TRUNCATE list includes the five new tables.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `backend/tests/unit/test_risk_scoring_models.py`:
 - `test_scoring_enum_values` — `ScoringMethod` == `{likelihood_impact}`; `RiskSeverity` == `{low, medium, high, critical}`; `ScoreSource` == `{manual, assessment}`.
@@ -118,19 +118,19 @@ Run `sdd-workspace` for this plan; create `progress.md` with first line `# SDD l
 
 Extend `backend/tests/integration/test_migration.py` with `test_risk_scoring_tables_exist` — reflects all five tables via `sa.inspect`, asserting columns (`framework_version`, `minimum_score`, `priority`, `effective_score`, `is_current`) and FKs to `risks`, `risk_assessments`, `risk_scoring_frameworks`.
 
-- [ ] **Step 2: Run and watch them fail**
+- [x] **Step 2: Run and watch them fail**
 
 Run `uv run pytest tests/unit/test_risk_scoring_models.py tests/integration/test_migration.py -q`. Expected: FAIL/ERROR — `ModuleNotFoundError: app.modules.risk_scoring` (feature missing, not typo).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Create `__init__.py` (one-line docstring, risk/assessment style), `enums.py`, `errors.py`, `models.py` per Interfaces; write migration `0017_risk_scoring.py`; add the five tables to the conftest TRUNCATE list.
 
-- [ ] **Step 4: Run and watch them pass**
+- [x] **Step 4: Run and watch them pass**
 
 Run `uv run pytest tests/unit/test_risk_scoring_models.py tests/integration/test_migration.py -q`. Expected: PASS. Then run the full suite `uv run pytest -q` — expected all green (conftest rebuilds the test DB from migrations each session).
 
-- [ ] **Step 5: Lint + commit**
+- [x] **Step 5: Lint + commit**
 
 `uv run ruff check .` clean; `uv run ruff format` on touched files. Commit: `feat(risk-scoring): scoring domain models, enums, errors and migration 0017 (RF-03)`.
 
@@ -156,26 +156,26 @@ Run `uv run pytest tests/unit/test_risk_scoring_models.py tests/integration/test
     - Thresholds (severity, min, max, priority, display_order): `low 1–4 priority 4 order 1`, `medium 5–9 priority 3 order 2`, `high 10–16 priority 2 order 3`, `critical 17–25 priority 1 order 4`.
     - Every level/threshold `display_order` sequential.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/integration/test_risk_scoring_seed.py`:
 - `test_seed_creates_standard_framework_with_levels_and_thresholds` — call once: returns 1; framework exists with name `Standard AI Risk Matrix`, `version == 1`, `method == "likelihood_impact"`, `is_system=True`, `is_active=True`; exactly 5 likelihood levels with values 1–5 named Rare/Unlikely/Possible/Likely/Almost Certain; exactly 5 impact levels named Negligible/Minor/Moderate/Major/Severe; exactly 4 thresholds whose (min, max) are (1,4),(5,9),(10,16),(17,25) with priorities 4,3,2,1 for low,medium,high,critical.
 - `test_seed_is_idempotent` — call twice: second returns 0; still exactly 1 framework / 5 / 5 / 4 rows.
 - `test_seed_scopes_by_tenant` — seed for a second tenant id: that tenant gets its own framework; default tenant unaffected.
 
-- [ ] **Step 2: Run and watch them fail**
+- [x] **Step 2: Run and watch them fail**
 
 Run `uv run pytest tests/integration/test_risk_scoring_seed.py -q`. Expected: ERROR — `ModuleNotFoundError: app.modules.risk_scoring.seed`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `app/modules/risk_scoring/seed.py` with the content constants + `seed_scoring_framework`; wire into `app/seed.py` `__main__` block after `seed_assessment_templates` (tenant-scoped, before `db.commit()`); add framework seeding to the conftest `client` fixture.
 
-- [ ] **Step 4: Run and watch them pass**
+- [x] **Step 4: Run and watch them pass**
 
 `uv run pytest tests/integration/test_risk_scoring_seed.py -q` → PASS. Full suite `uv run pytest -q` → green.
 
-- [ ] **Step 5: Lint + commit**
+- [x] **Step 5: Lint + commit**
 
 ruff clean. Commit: `feat(risk-scoring): idempotent Standard AI Risk Matrix seed (RF-03)`.
 
@@ -195,7 +195,7 @@ ruff clean. Commit: `feat(risk-scoring): idempotent Standard AI Risk Matrix seed
   - `class PriorityClassifier` with `assign(severity: str, thresholds: Sequence[RiskSeverityThreshold]) -> int` — return the `priority` of the threshold whose `severity` matches; none → `InvalidScoringFrameworkError(f"no severity threshold for '{severity}'")`.
   - No threshold literals anywhere in this file (plan §3).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/unit/test_risk_scoring_engine.py` (helper: build transient `RiskScoringFramework(method="likelihood_impact")` and threshold rows for the default 1–4/5–9/10–16/17–25 bands):
 - `test_calculate_multiplies_likelihood_by_impact` — 4×5 → 20; 3×4 → 12; 2×3 → 6; 1×2 → 2 (plan §54 examples).
@@ -206,19 +206,19 @@ ruff clean. Commit: `feat(risk-scoring): idempotent Standard AI Risk Matrix seed
 - `test_priority_comes_from_threshold_rows` — default bands → severity `critical` → 1, `high` → 2, `medium` → 3, `low` → 4; swapped-priority config (e.g. low priority 9) → returns 9 (proves config, not a literal map).
 - `test_assign_unknown_severity_raises` — severity `"catastrophic"` → `InvalidScoringFrameworkError`.
 
-- [ ] **Step 2: Run and watch them fail**
+- [x] **Step 2: Run and watch them fail**
 
 Run `uv run pytest tests/unit/test_risk_scoring_engine.py -q`. Expected: FAIL/ERROR — `ModuleNotFoundError: app.modules.risk_scoring.engine`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `engine.py` per Interfaces: three classes with static methods, dispatch on `framework.method`, linear scan over ordered thresholds. No DB access, no literals.
 
-- [ ] **Step 4: Run and watch them pass**
+- [x] **Step 4: Run and watch them pass**
 
 `uv run pytest tests/unit/test_risk_scoring_engine.py -q` → PASS. Full suite → green.
 
-- [ ] **Step 5: Lint + commit**
+- [x] **Step 5: Lint + commit**
 
 ruff clean. Commit: `feat(risk-scoring): configurable scoring engine (RF-03)`.
 
@@ -255,7 +255,7 @@ ruff clean. Commit: `feat(risk-scoring): configurable scoring engine (RF-03)`.
   - `OverviewTopRisk`: `risk_id`, `title`, `severity`, `effective_score`, `priority`.
   - `ScoringOverviewResponse`: `framework: ScoringFrameworkRef`, `distribution: RiskDistributionResponse`, `likelihood_levels: list[LikelihoodLevelResponse]`, `impact_levels: list[ImpactLevelResponse]`, `cells: list[MatrixCell]`, `top_risks: list[OverviewTopRisk]`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/unit/test_risk_scoring_schemas.py`:
 - `test_framework_create_strips_name_and_defaults` (name "  Custom 4x4  " → stripped; method defaults to `likelihood_impact`; version defaults to 1).
@@ -270,19 +270,19 @@ ruff clean. Commit: `feat(risk-scoring): configurable scoring engine (RF-03)`.
 - `test_score_filter_defaults` (page 1, page_size 25, sort_by created_at, sort_order desc).
 - `test_framework_filter_defaults` (sort_by name, sort_order asc).
 
-- [ ] **Step 2: Run and watch them fail**
+- [x] **Step 2: Run and watch them fail**
 
 Run `uv run pytest tests/unit/test_risk_scoring_schemas.py -q`. Expected: ERROR — `ModuleNotFoundError: app.modules.risk_scoring.schemas`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `schemas.py` per Interfaces (strip validators and tz-aware timestamp validators mirror `risk/schemas.py`).
 
-- [ ] **Step 4: Run and watch them pass**
+- [x] **Step 4: Run and watch them pass**
 
 `uv run pytest tests/unit/test_risk_scoring_schemas.py -q` → PASS. Full suite → green.
 
-- [ ] **Step 5: Lint + commit**
+- [x] **Step 5: Lint + commit**
 
 ruff clean. Commit: `feat(risk-scoring): scoring and framework schemas with validation (RF-03)`.
 
@@ -324,7 +324,7 @@ ruff clean. Commit: `feat(risk-scoring): scoring and framework schemas with vali
   - `score_audit_state(score: RiskScore) -> dict` module helper — governance projection: `risk_id`, `framework_id`, `framework_version`, `likelihood`, `impact`, `calculated_score`, `effective_score`, `severity`, `priority`, `override_score`, `override_reason`, `is_override`, `is_current`, `assessment_id`, `source`.
   - Audit: `AuditEventType` gains `RISK_SCORE_CREATED = "risk.score_created"`, `RISK_SCORE_RECALCULATED = "risk.score_recalculated"`, `RISK_SCORE_OVERRIDDEN = "risk.score_overridden"`, `SCORING_FRAMEWORK_CREATED = "scoring_framework.created"`, `SCORING_FRAMEWORK_UPDATED = "scoring_framework.updated"` (all match `EVENT_TYPE_PATTERN`).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/integration/test_risk_scoring_framework_service.py` (fixture: seed framework):
 - `test_create_framework_persists_with_levels_and_thresholds` (audit `scoring_framework.created`, resource_type `scoring_framework`)
@@ -365,19 +365,19 @@ ruff clean. Commit: `feat(risk-scoring): scoring and framework schemas with vali
 - `test_overview_excludes_archived_risks` (archived scored risk not counted in distribution/cells/top_risks)
 - `test_overview_unknown_framework_returns_404`
 
-- [ ] **Step 2: Run and watch them fail**
+- [x] **Step 2: Run and watch them fail**
 
 Run `uv run pytest tests/integration/test_risk_scoring_service.py tests/integration/test_risk_scoring_framework_service.py -q`. Expected: ERROR — `ModuleNotFoundError: app.modules.risk_scoring.repository` / service.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `repository.py` (tenant-scoped getters, filter builders, sort whitelists, count+offset lists, `clear_current_score` UPDATE, batch lookups — mirror `risk/repository.py`), `service.py` (two services + `validate_config` + `score_audit_state` + engine delegation), extend `audit/enums.py` with the five event types.
 
-- [ ] **Step 4: Run and watch them pass**
+- [x] **Step 4: Run and watch them pass**
 
 `uv run pytest tests/integration/test_risk_scoring_service.py tests/integration/test_risk_scoring_framework_service.py -q` → PASS. Full suite → green.
 
-- [ ] **Step 5: Lint + commit**
+- [x] **Step 5: Lint + commit**
 
 ruff clean. Commit: `feat(risk-scoring): scoring services with workflow, validation, tenant isolation and audit (RF-03)`.
 
@@ -408,7 +408,7 @@ ruff clean. Commit: `feat(risk-scoring): scoring services with workflow, validat
   - Errors use the existing envelope: 404 `SCORING_FRAMEWORK_NOT_FOUND`/`RISK_SCORE_NOT_FOUND`/`RISK_NOT_FOUND`/`ASSESSMENT_NOT_FOUND`, 409 `SCORING_FRAMEWORK_INACTIVE`/`SCORING_FRAMEWORK_DUPLICATE`/`RISK_ARCHIVED`, 400 `RISK_SCORE_INVALID`/`SCORING_FRAMEWORK_INVALID`/`*_QUERY_INVALID`, 422 `VALIDATION_ERROR` for malformed bodies/blank reason. Unknown query params → 400.
   - OpenAPI operation count: 89 + 10 new = 99 (verify the delta at runtime; adjust the asserted number to the real count if the existing 89 has drifted, and record the ruling).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/api/test_risk_scoring_api.py` (fixtures: `client`, `db`; helper `_framework_id(client)` returning the seeded framework's id; helper to create a risk via API):
 - `test_list_frameworks_includes_seeded_standard_matrix` (name present, `is_system` true, `version` 1, `method` `likelihood_impact`)
@@ -438,19 +438,19 @@ ruff clean. Commit: `feat(risk-scoring): scoring services with workflow, validat
 
 Also update `tests/api/test_models_api.py::test_openapi_contract`: add the new paths to the membership set and bump `== 89` to the verified new total (expected 99).
 
-- [ ] **Step 2: Run and watch them fail**
+- [x] **Step 2: Run and watch them fail**
 
 Run `uv run pytest tests/api/test_risk_scoring_api.py tests/api/test_models_api.py::test_openapi_contract -q`. Expected: FAIL with 404 NOT_FOUND (routes missing) and contract count mismatch.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `routes.py` with the two routers; service factories passing `settings.default_tenant_id`, `request_id`, `actor=None`; `_build` filter wrappers (ValidationError → domain query error); register both routers in `create_app()` (before `audit_router`, mirroring existing include order).
 
-- [ ] **Step 4: Run and watch them pass**
+- [x] **Step 4: Run and watch them pass**
 
 `uv run pytest tests/api/test_risk_scoring_api.py tests/api/test_models_api.py -q` → PASS. Full suite → green.
 
-- [ ] **Step 5: Lint + commit**
+- [x] **Step 5: Lint + commit**
 
 ruff clean. Commit: `feat(risk-scoring): scoring framework and risk score REST APIs (RF-03)`.
 
@@ -476,7 +476,7 @@ ruff clean. Commit: `feat(risk-scoring): scoring framework and risk score REST A
   - `risk/routes.py`: `RISK_QUERY_KEYS` gains `severity, priority, scored, likelihood, impact, framework_id`; `list_risks` endpoint gains matching `Query` params (severity as `RiskSeverity | None`, priority `int` ge 1); `_risk_response(risk, categories, assets, scores)` and `_page_response` attach `current_score` built from `scores.get(risk.id)` (create/get/update responses resolve scores for the single risk).
   - `risk/service.RiskService.resolve_scores(risks: Sequence[Risk]) -> dict[UUID, RiskScore]` — delegates to `get_current_scores_by_risk_ids` (keeps routes free of cross-module repository calls).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/api/test_risk_register_scoring_api.py` (fixtures: `client`, `db`; create risks via API; score them via `POST /api/v1/risks/{id}/scores`):
 - `test_risk_list_includes_null_current_score_when_unscored` (`current_score is None` on an unscored risk — distinguishable from low, plan §28)
@@ -497,19 +497,19 @@ ruff clean. Commit: `feat(risk-scoring): scoring framework and risk score REST A
 
 Unit addition `RiskScoreSummary` test: rejects naive timestamps; defaults `current_score` to None on `RiskResponse`.
 
-- [ ] **Step 2: Run and watch them fail**
+- [x] **Step 2: Run and watch them fail**
 
 Run `uv run pytest tests/api/test_risk_register_scoring_api.py -q`. Expected: FAIL — `current_score` missing from response / unknown query parameter (feature missing, not typo).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Per Interfaces: schemas first, then repository join/filters/sorts, then service `resolve_scores`, then routes wiring.
 
-- [ ] **Step 4: Run and watch them pass**
+- [x] **Step 4: Run and watch them pass**
 
 `uv run pytest tests/api/test_risk_register_scoring_api.py -q` → PASS. Then RF-01 regression: `uv run pytest tests/api/test_risks_api.py tests/integration/test_risk_service.py tests/unit/test_risk_schemas.py -q` → PASS. Full suite → green.
 
-- [ ] **Step 5: Lint + commit**
+- [x] **Step 5: Lint + commit**
 
 ruff clean. Commit: `feat(risk): risk register scoring integration with filters and sorting (RF-03)`.
 
@@ -526,7 +526,7 @@ ruff clean. Commit: `feat(risk): risk register scoring integration with filters 
 - Consumes: everything from Tasks 2–8.
 - Produces: green end-to-end proof; documented endpoints; pushed branch + PR.
 
-- [ ] **Step 1: Write the failing/verifying end-to-end test**
+- [x] **Step 1: Write the failing/verifying end-to-end test**
 
 `tests/e2e/test_risk_scoring_acceptance.py`:
 - `test_full_risk_scoring_journey` (plan §61 user journey / §62 DoD):
@@ -543,11 +543,11 @@ ruff clean. Commit: `feat(risk): risk register scoring integration with filters 
   11. assert the register still supports RF-01 mutations and RF-02 assessment reads (regression).
 - `test_cross_tenant_scoring_isolation` — tenant B's framework, risk, and score are unreachable from tenant A (404s), and tenant A cannot score tenant B's risk or use tenant B's framework (plan §47).
 
-- [ ] **Step 2: Run it**
+- [x] **Step 2: Run it**
 
 `uv run pytest tests/e2e/test_risk_scoring_acceptance.py -q` → PASS. If RED: debug with systematic-debugging before proceeding.
 
-- [ ] **Step 3: Full acceptance sweep**
+- [x] **Step 3: Full acceptance sweep**
 
 - `uv run pytest -q` → entire suite green (no RF-01/RF-02/Asset Discovery regression).
 - `uv run ruff check .` → clean; `uv run ruff format --check .` on touched files.
@@ -555,11 +555,11 @@ ruff clean. Commit: `feat(risk): risk register scoring integration with filters 
 - `uv run python -m app.seed` twice → idempotent (one framework with 5/5/4 config, 21 categories, one template, no duplicates).
 - Verify OpenAPI: `/api/v1/risk-scoring/frameworks`, `/api/v1/risk-scoring/overview`, and the score subroutes appear in `app.openapi()` paths.
 
-- [ ] **Step 4: Update README**
+- [x] **Step 4: Update README**
 
 Add scoring endpoints to the README endpoint list (`/api/v1/risk-scoring/frameworks` + subroutes, `/api/v1/risk-scoring/overview`, `/api/v1/risks/{risk_id}/scores` + `current`/`recalculate`/`override`), a one-line RF-03 mention, and tick the status checklist.
 
-- [ ] **Step 5: Commit, push, open PR**
+- [x] **Step 5: Commit, push, open PR**
 
 Commit `feat(risk-scoring): risk scoring and prioritization acceptance and docs (RF-03)`. Check off tasks in this plan file (`docs: check off RF-03 plan tasks`). Push `feature/rf03-risk-scoring` to `origin`. Open PR against `main` with a summary of RF-03 scope + rulings. Expected: PR created; local suite green.
 
