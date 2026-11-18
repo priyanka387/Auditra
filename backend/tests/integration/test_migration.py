@@ -760,3 +760,113 @@ def test_assessment_migration_downgrade_and_upgrade(database):
         assert insp.has_table("risks")
     finally:
         engine.dispose()
+
+
+def test_risk_scoring_tables_exist(database):
+    """RF-03 adds the risk scoring tables (migration 0017)."""
+    engine = sa.create_engine(settings.database_url, poolclass=sa.pool.NullPool)
+    scoring_tables = (
+        "risk_scoring_frameworks",
+        "risk_likelihood_levels",
+        "risk_impact_levels",
+        "risk_severity_thresholds",
+        "risk_scores",
+    )
+    try:
+        insp = sa.inspect(engine)
+        for table in scoring_tables:
+            assert insp.has_table(table), table
+
+        framework_columns = {c["name"] for c in insp.get_columns("risk_scoring_frameworks")}
+        for name in ("id", "tenant_id", "name", "version", "method", "is_system", "is_active"):
+            assert name in framework_columns, name
+
+        threshold_columns = {c["name"] for c in insp.get_columns("risk_severity_thresholds")}
+        for name in (
+            "id",
+            "framework_id",
+            "minimum_score",
+            "maximum_score",
+            "severity",
+            "priority",
+            "display_order",
+        ):
+            assert name in threshold_columns, name
+
+        score_columns = {c["name"] for c in insp.get_columns("risk_scores")}
+        for name in (
+            "id",
+            "tenant_id",
+            "risk_id",
+            "framework_id",
+            "framework_version",
+            "likelihood_value",
+            "likelihood_label",
+            "impact_value",
+            "impact_label",
+            "calculated_score",
+            "severity",
+            "priority",
+            "override_score",
+            "effective_score",
+            "override_reason",
+            "is_inherent",
+            "is_current",
+            "is_override",
+            "assessment_id",
+            "source",
+            "scored_by",
+        ):
+            assert name in score_columns, name
+
+        fks = {
+            fk["constrained_columns"][0]: fk["referred_table"]
+            for fk in insp.get_foreign_keys("risk_scores")
+        }
+        assert fks["risk_id"] == "risks"
+        assert fks["framework_id"] == "risk_scoring_frameworks"
+        assert fks["assessment_id"] == "risk_assessments"
+
+        level_fks = {
+            fk["constrained_columns"][0]: fk["referred_table"]
+            for fk in insp.get_foreign_keys("risk_likelihood_levels")
+        }
+        assert level_fks["framework_id"] == "risk_scoring_frameworks"
+    finally:
+        engine.dispose()
+
+
+def test_risk_scoring_migration_downgrade_and_upgrade(database):
+    """RF-03 migration 0017 is reversible without touching RF-01/RF-02 tables."""
+    cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    engine = sa.create_engine(settings.database_url, poolclass=sa.pool.NullPool)
+    scoring_tables = (
+        "risk_scores",
+        "risk_severity_thresholds",
+        "risk_impact_levels",
+        "risk_likelihood_levels",
+        "risk_scoring_frameworks",
+    )
+    try:
+        insp = sa.inspect(engine)
+        for table in scoring_tables:
+            assert insp.has_table(table), table
+        # RF-01/RF-02 tables stay untouched by 0017
+        assert insp.has_table("risks")
+        assert insp.has_table("risk_assessments")
+
+        try:
+            command.downgrade(cfg, "0016")
+            insp = sa.inspect(engine)
+            for table in scoring_tables:
+                assert not insp.has_table(table), table
+            assert insp.has_table("risks")
+            assert insp.has_table("risk_assessments")
+        finally:
+            command.upgrade(cfg, "head")
+        insp = sa.inspect(engine)
+        for table in scoring_tables:
+            assert insp.has_table(table), table
+        assert insp.has_table("risks")
+    finally:
+        engine.dispose()
