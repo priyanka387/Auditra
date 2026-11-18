@@ -19,6 +19,7 @@ from app.modules.assessment.seed import seed_assessment_templates
 from app.modules.model_inventory.models import Model, ModelProvider, ModelType, ModelVersion
 from app.modules.model_inventory.services import ModelService
 from app.modules.risk.seed import seed_risk_categories
+from app.modules.risk_scoring.seed import seed_scoring_framework
 from app.seed import seed_reference_data
 
 TEST_DB_NAME = "auditra_test"
@@ -115,5 +116,7 @@ def client(db):
     seed_risk_categories(db, settings.default_tenant_id)
     # RF-02: assessments run against the system template seeded per tenant
     seed_assessment_templates(db, settings.default_tenant_id)
+    # RF-03: scoring runs against the system framework seeded per tenant
+    seed_scoring_framework(db, settings.default_tenant_id)
     db.commit()
     yield TestClient(app)
