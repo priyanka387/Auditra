@@ -32,9 +32,11 @@ from app.modules.risk.schemas import (
     RiskFilter,
     RiskListResponse,
     RiskResponse,
+    RiskScoreSummary,
     RiskUpdate,
 )
 from app.modules.risk.service import RiskCategoryService, RiskService
+from app.modules.risk_scoring.enums import RiskSeverity
 
 router = APIRouter(prefix="/api/v1/risks")
 categories_router = APIRouter(prefix="/api/v1/risk-categories")
@@ -52,6 +54,12 @@ RISK_QUERY_KEYS = {
     "team",
     "asset_id",
     "archived",
+    "severity",
+    "priority",
+    "scored",
+    "likelihood",
+    "impact",
+    "framework_id",
     "sort_by",
     "sort_order",
 }
@@ -121,7 +129,23 @@ def _risk_fields(risk) -> dict:
     }
 
 
-def _risk_response(risk, categories, assets) -> RiskResponse:
+def _score_summary(score) -> RiskScoreSummary | None:
+    """Scalar summary of a current score; None means unscored (never low)."""
+    if score is None:
+        return None
+    return RiskScoreSummary(
+        likelihood=score.likelihood_value,
+        impact=score.impact_value,
+        calculated_score=score.calculated_score,
+        effective_score=score.effective_score,
+        severity=score.severity,
+        priority=score.priority,
+        is_override=score.is_override,
+        scored_at=score.created_at,
+    )
+
+
+def _risk_response(risk, categories, assets, scores) -> RiskResponse:
     """Build one risk response with its resolved refs (no per-row queries)."""
     asset = assets.get(risk.asset_id) if risk.asset_id else None
     return RiskResponse.model_validate(
@@ -133,6 +157,7 @@ def _risk_response(risk, categories, assets) -> RiskResponse:
                 "slug": categories[risk.category_id].slug,
             },
             "asset": None if asset is None else {"id": asset.id, "name": asset.name},
+            "current_score": _score_summary(scores.get(risk.id)),
         },
         from_attributes=False,
     )
@@ -145,8 +170,9 @@ def _category_response(category) -> RiskCategoryResponse:
 def _page_response(service: RiskService, filters) -> RiskListResponse:
     items, total = service.list(filters)
     categories, assets = service.resolve_refs(items)
+    scores = service.resolve_scores(items)
     return RiskListResponse(
-        items=[_risk_response(item, categories, assets) for item in items],
+        items=[_risk_response(item, categories, assets, scores) for item in items],
         page=filters.page,
         page_size=filters.page_size,
         total=total,
@@ -166,7 +192,8 @@ def create_risk(
     service = _service(request, db)
     risk = service.create(payload)
     categories, assets = service.resolve_refs([risk])
-    return _risk_response(risk, categories, assets)
+    scores = service.resolve_scores([risk])
+    return _risk_response(risk, categories, assets, scores)
 
 
 @router.get("", response_model=RiskListResponse)
@@ -183,6 +210,12 @@ def list_risks(
     team: Annotated[str | None, Query(max_length=255)] = None,
     asset_id: UUID | None = None,
     archived: bool = False,
+    severity: RiskSeverity | None = None,
+    priority: Annotated[int | None, Query(ge=1)] = None,
+    scored: bool | None = None,
+    likelihood: int | None = None,
+    impact: int | None = None,
+    framework_id: UUID | None = None,
     sort_by: str = "updated_at",
     sort_order: str = "desc",
 ) -> RiskListResponse:
@@ -198,6 +231,12 @@ def list_risks(
         team=team,
         asset_id=asset_id,
         archived=archived,
+        severity=severity,
+        priority=priority,
+        scored=scored,
+        likelihood=likelihood,
+        impact=impact,
+        framework_id=framework_id,
         sort_by=sort_by,
         sort_order=sort_order,
     )
@@ -213,7 +252,8 @@ def get_risk(
     service = _service(request, db)
     risk = service.get(risk_id)
     categories, assets = service.resolve_refs([risk])
-    return _risk_response(risk, categories, assets)
+    scores = service.resolve_scores([risk])
+    return _risk_response(risk, categories, assets, scores)
 
 
 @router.patch("/{risk_id}", response_model=RiskResponse)
@@ -226,7 +266,8 @@ def update_risk(
     service = _service(request, db)
     risk = service.update(risk_id, payload)
     categories, assets = service.resolve_refs([risk])
-    return _risk_response(risk, categories, assets)
+    scores = service.resolve_scores([risk])
+    return _risk_response(risk, categories, assets, scores)
 
 
 @router.delete("/{risk_id}", status_code=204, response_class=Response)

@@ -6,6 +6,7 @@ from app.core.db import SessionLocal
 from app.modules.assessment.seed import seed_assessment_templates
 from app.modules.model_inventory.models import ModelProvider, ModelType
 from app.modules.risk.seed import seed_risk_categories
+from app.modules.risk_scoring.seed import seed_scoring_framework
 
 PROVIDERS = [
     ("openai", "OpenAI"),
@@ -65,4 +66,7 @@ if __name__ == "__main__":
         # RF-02: per-tenant system assessment template; idempotent, so
         # re-running the seed never duplicates the questionnaire
         seed_assessment_templates(db, settings.default_tenant_id)
+        # RF-03: per-tenant system scoring framework; idempotent, so
+        # re-running the seed never duplicates the matrix
+        seed_scoring_framework(db, settings.default_tenant_id)
         db.commit()

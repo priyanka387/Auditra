@@ -25,6 +25,14 @@ Specs: `docs/features/model-inventory/spec.md`, `docs/features/model-inventory/v
   [x] Audit
 ```
 
+## Risk & Compliance status
+
+```text
+  [x] RF-01 Risk Register & Taxonomy
+  [x] RF-02 AI Risk Assessment
+  [x] RF-03 Risk Scoring & Prioritization
+```
+
 ## Prerequisites
 
 - Docker (with Compose)
@@ -79,7 +87,13 @@ Endpoints: `/health`, `/api/v1/models`, `/api/v1/models/{model_id}`,
 `/api/v1/risk-assessments/{assessment_id}/approve`,
 `/api/v1/risk-assessments/{assessment_id}/reject`,
 `/api/v1/risk-assessments/{assessment_id}/revision`,
-`/api/v1/assessment-templates`, `/api/v1/assessment-templates/{template_id}`
+`/api/v1/assessment-templates`, `/api/v1/assessment-templates/{template_id}`,
+`/api/v1/risk-scoring/frameworks`,
+`/api/v1/risk-scoring/frameworks/{framework_id}`,
+`/api/v1/risk-scoring/overview`,
+`/api/v1/risks/{risk_id}/scores`, `/api/v1/risks/{risk_id}/scores/current`,
+`/api/v1/risks/{risk_id}/scores/recalculate`,
+`/api/v1/risks/{risk_id}/scores/override`
 (OpenAPI at `/docs`).
 
 Risk & Compliance Management: RF-01 ships the risk register and its
@@ -94,5 +108,14 @@ approved | rejected), fork rejected assessments into revisions that carry
 the answers forward, and browse completion percentages with list filters —
 all tenant-isolated and fully audited. A custom template catalog
 (create/patch) complements the seeded system template.
+
+RF-03 adds configurable, versioned risk scoring & prioritization: score a
+risk against a per-tenant framework (likelihood × impact scales, severity
+thresholds and priorities are configuration, not code) with a seeded
+5×5 Standard AI Risk Matrix, keep immutable score history with a single
+current score, override with a mandatory justification while preserving
+the calculated result, filter and sort the register by score/severity/
+priority, and read the prioritization overview (distribution, heat-map
+cells, top risks) — every scoring decision recorded in the audit trail.
 
 Lint: `uv run ruff check .` and `uv run ruff format .` (from `backend/`).

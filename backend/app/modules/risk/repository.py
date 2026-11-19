@@ -21,6 +21,7 @@ from app.modules.risk.errors import (
 )
 from app.modules.risk.models import Risk, RiskCategory
 from app.modules.risk.schemas import RiskCategoryFilter, RiskFilter
+from app.modules.risk_scoring.models import RiskScore
 
 CATEGORY_SORT_COLUMNS = {
     "name": RiskCategory.name,
@@ -38,6 +39,19 @@ RISK_SORT_COLUMNS = {
     "created_at": Risk.created_at,
     "updated_at": Risk.updated_at,
 }
+
+# RF-03: score-backed sort fields; each honors sort_order with NULLS LAST
+# so unscored risks never float to the top of an ascending list (Ruling 10)
+SCORE_SORT_COLUMNS = {
+    "score": RiskScore.effective_score,
+    "likelihood": RiskScore.likelihood_value,
+    "impact": RiskScore.impact_value,
+    "scored_at": RiskScore.created_at,
+}
+
+# severity/priority sorts are fixed: highest risk first, ties broken by
+# effective score — sort_order is ignored (Ruling 10)
+PRIORITY_SORT_FIELDS = {"severity", "priority"}
 
 
 # --- risk categories --------------------------------------------------------
@@ -182,6 +196,22 @@ def _risk_conditions(tenant_id: UUID, filters: RiskFilter) -> list:
         conditions.append(Risk.team == filters.team)
     if filters.asset_id is not None:
         conditions.append(Risk.asset_id == filters.asset_id)
+    # RF-03 score filters run against the LEFT JOINed current score, so
+    # any of them naturally restricts results to scored risks
+    if filters.scored is True:
+        conditions.append(RiskScore.id.is_not(None))
+    elif filters.scored is False:
+        conditions.append(RiskScore.id.is_(None))
+    if filters.severity is not None:
+        conditions.append(RiskScore.severity == filters.severity)
+    if filters.priority is not None:
+        conditions.append(RiskScore.priority == filters.priority)
+    if filters.likelihood is not None:
+        conditions.append(RiskScore.likelihood_value == filters.likelihood)
+    if filters.impact is not None:
+        conditions.append(RiskScore.impact_value == filters.impact)
+    if filters.framework_id is not None:
+        conditions.append(RiskScore.framework_id == filters.framework_id)
     if filters.search is not None:
         term = f"%{filters.search}%"
         conditions.append(
@@ -195,30 +225,43 @@ def _risk_conditions(tenant_id: UUID, filters: RiskFilter) -> list:
     return conditions
 
 
-def list_risks(db: Session, tenant_id: UUID, filters: RiskFilter) -> tuple[list[Risk], int]:
-    conditions = _risk_conditions(tenant_id, filters)
-    # outer join: a risk without an asset must still match title/description
-    # terms in the same search
-    total = (
-        db.scalar(
-            select(func.count())
-            .select_from(Risk)
-            .join(DiscoveredAsset, Risk.asset_id == DiscoveredAsset.id, isouter=True)
-            .where(*conditions)
-        )
-        or 0
+def _risk_list_joins(statement):
+    """Asset + current-score outer joins shared by count and page queries."""
+    return statement.join(DiscoveredAsset, Risk.asset_id == DiscoveredAsset.id, isouter=True).join(
+        RiskScore,
+        (RiskScore.risk_id == Risk.id) & RiskScore.is_current.is_(True),
+        isouter=True,
     )
 
+
+def _risk_ordering(filters: RiskFilter) -> list:
+    if filters.sort_by in PRIORITY_SORT_FIELDS:
+        # severity/priority: highest risk first, effective score breaks ties
+        return [RiskScore.priority.asc().nulls_last(), RiskScore.effective_score.desc()]
+    if filters.sort_by in SCORE_SORT_COLUMNS:
+        column = SCORE_SORT_COLUMNS[filters.sort_by]
+        ordering = column.desc() if filters.sort_order == "desc" else column.asc()
+        return [ordering.nulls_last()]
     sort_column = RISK_SORT_COLUMNS.get(filters.sort_by)
     if sort_column is None:
         raise InvalidRiskQueryError(f"unsupported sort field '{filters.sort_by}'")
-    ordering = sort_column.desc() if filters.sort_order == "desc" else sort_column.asc()
+    return [sort_column.desc() if filters.sort_order == "desc" else sort_column.asc()]
+
+
+def list_risks(db: Session, tenant_id: UUID, filters: RiskFilter) -> tuple[list[Risk], int]:
+    conditions = _risk_conditions(tenant_id, filters)
+    # outer joins: a risk without an asset must still match title/
+    # description terms, and a risk without a score must still be listed
+    total = (
+        db.scalar(_risk_list_joins(select(func.count()).select_from(Risk)).where(*conditions)) or 0
+    )
+
+    ordering = _risk_ordering(filters)
     items = list(
         db.scalars(
-            select(Risk)
-            .join(DiscoveredAsset, Risk.asset_id == DiscoveredAsset.id, isouter=True)
+            _risk_list_joins(select(Risk))
             .where(*conditions)
-            .order_by(ordering, Risk.id)
+            .order_by(*ordering, Risk.id)
             .offset((filters.page - 1) * filters.page_size)
             .limit(filters.page_size)
         )

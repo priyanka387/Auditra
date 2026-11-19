@@ -281,6 +281,14 @@ def test_openapi_contract(client):
         "/api/v1/discovery/assets",
         "/api/v1/discovery/assets/{asset_id}",
         "/api/v1/discovery/assets/{asset_id}/evidence",
+        # RF-03 risk scoring: framework CRUD + overview + nested scores
+        "/api/v1/risk-scoring/frameworks",
+        "/api/v1/risk-scoring/frameworks/{framework_id}",
+        "/api/v1/risk-scoring/overview",
+        "/api/v1/risks/{risk_id}/scores",
+        "/api/v1/risks/{risk_id}/scores/current",
+        "/api/v1/risks/{risk_id}/scores/recalculate",
+        "/api/v1/risks/{risk_id}/scores/override",
     } <= set(paths)
     assert {"post", "get"} <= set(paths["/api/v1/models"])
     assert {"get", "patch", "delete"} <= set(paths["/api/v1/models/{model_id}"])
@@ -291,9 +299,10 @@ def test_openapi_contract(client):
     assert {"post"} <= set(paths["/api/v1/models/{model_id}/versions/{version_id}/lifecycle"])
     # includes the Discovered Asset Catalog read endpoints (Sub-feature 4),
     # the nested evidence listing (Sub-feature 9), the RF-01 risk
-    # register + taxonomy endpoints and the RF-02 assessment workflow +
-    # template catalog endpoints
-    assert sum(len(methods) for methods in paths.values()) == 89
+    # register + taxonomy endpoints, the RF-02 assessment workflow +
+    # template catalog endpoints and the RF-03 scoring framework /
+    # score / overview endpoints (10 new operations)
+    assert sum(len(methods) for methods in paths.values()) == 99
 
     schemas = app.openapi()["components"]["schemas"]
     assert {"ModelVersionCreate", "ModelVersionResponse"} <= set(schemas)

@@ -19,6 +19,7 @@ from app.modules.assessment.seed import seed_assessment_templates
 from app.modules.model_inventory.models import Model, ModelProvider, ModelType, ModelVersion
 from app.modules.model_inventory.services import ModelService
 from app.modules.risk.seed import seed_risk_categories
+from app.modules.risk_scoring.seed import seed_scoring_framework
 from app.seed import seed_reference_data
 
 TEST_DB_NAME = "auditra_test"
@@ -56,6 +57,7 @@ def db(database):
             sa.text(
                 "TRUNCATE discovery_evidence, discovered_asset_runs, discovered_assets, discovery_runs, discovery_sources, "
                 "assessment_responses, risk_assessments, assessment_questions, assessment_sections, assessment_templates, "
+                "risk_scores, risk_severity_thresholds, risk_impact_levels, risk_likelihood_levels, risk_scoring_frameworks, "
                 "risks, risk_categories, audit_events, model_usage_events, model_discovery, agent_model_associations, agents, applications, "
                 "model_deployments, deployment_endpoints, model_versions, "
                 "model_tag_links, model_tags, models, model_types, "
@@ -114,5 +116,7 @@ def client(db):
     seed_risk_categories(db, settings.default_tenant_id)
     # RF-02: assessments run against the system template seeded per tenant
     seed_assessment_templates(db, settings.default_tenant_id)
+    # RF-03: scoring runs against the system framework seeded per tenant
+    seed_scoring_framework(db, settings.default_tenant_id)
     db.commit()
     yield TestClient(app)
