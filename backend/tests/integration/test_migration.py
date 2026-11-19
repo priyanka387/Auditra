@@ -870,3 +870,134 @@ def test_risk_scoring_migration_downgrade_and_upgrade(database):
         assert insp.has_table("risks")
     finally:
         engine.dispose()
+
+
+def test_risk_treatment_tables_exist(database):
+    """RF-04 adds the risk treatment tables (migration 0018)."""
+    engine = sa.create_engine(settings.database_url, poolclass=sa.pool.NullPool)
+    treatment_tables = (
+        "risk_treatments",
+        "risk_treatment_actions",
+        "risk_treatment_residual_assessments",
+    )
+    try:
+        insp = sa.inspect(engine)
+        for table in treatment_tables:
+            assert insp.has_table(table), table
+
+        treatment_columns = {c["name"] for c in insp.get_columns("risk_treatments")}
+        for name in (
+            "id",
+            "tenant_id",
+            "risk_id",
+            "strategy",
+            "status",
+            "title",
+            "rationale",
+            "owner",
+            "planned_start_date",
+            "target_completion_date",
+            "completed_at",
+            "cancelled_at",
+            "cancellation_reason",
+            "created_by",
+        ):
+            assert name in treatment_columns, name
+
+        action_columns = {c["name"] for c in insp.get_columns("risk_treatment_actions")}
+        for name in (
+            "id",
+            "tenant_id",
+            "treatment_id",
+            "title",
+            "status",
+            "owner",
+            "priority",
+            "planned_start_date",
+            "due_date",
+            "completed_at",
+        ):
+            assert name in action_columns, name
+
+        residual_columns = {
+            c["name"] for c in insp.get_columns("risk_treatment_residual_assessments")
+        }
+        for name in (
+            "id",
+            "tenant_id",
+            "treatment_id",
+            "likelihood_value",
+            "impact_value",
+            "calculated_score",
+            "severity",
+            "assessment_type",
+            "created_by",
+            "created_at",
+        ):
+            assert name in residual_columns, name
+
+        treatment_fks = {
+            fk["constrained_columns"][0]: fk["referred_table"]
+            for fk in insp.get_foreign_keys("risk_treatments")
+        }
+        assert treatment_fks["risk_id"] == "risks"
+
+        action_fks = {
+            fk["constrained_columns"][0]: fk["referred_table"]
+            for fk in insp.get_foreign_keys("risk_treatment_actions")
+        }
+        assert action_fks["treatment_id"] == "risk_treatments"
+
+        residual_fks = {
+            fk["constrained_columns"][0]: fk["referred_table"]
+            for fk in insp.get_foreign_keys("risk_treatment_residual_assessments")
+        }
+        assert residual_fks["treatment_id"] == "risk_treatments"
+
+        # RF-04 §48: at most one active treatment per risk (partial unique)
+        active_indexes = {
+            index["name"]: index
+            for index in insp.get_indexes("risk_treatments")
+            if index.get("unique")
+        }
+        assert "uq_risk_treatments_risk_active" in active_indexes
+        assert "completed" not in str(
+            active_indexes["uq_risk_treatments_risk_active"].get("postgresql_where")
+        )
+    finally:
+        engine.dispose()
+
+
+def test_risk_treatment_migration_downgrade_and_upgrade(database):
+    """RF-04 migration 0018 is reversible without touching earlier tables."""
+    cfg = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    engine = sa.create_engine(settings.database_url, poolclass=sa.pool.NullPool)
+    treatment_tables = (
+        "risk_treatment_residual_assessments",
+        "risk_treatment_actions",
+        "risk_treatments",
+    )
+    try:
+        insp = sa.inspect(engine)
+        for table in treatment_tables:
+            assert insp.has_table(table), table
+        # RF-01/RF-02/RF-03 tables stay untouched by 0018
+        assert insp.has_table("risks")
+        assert insp.has_table("risk_assessments")
+        assert insp.has_table("risk_scores")
+
+        try:
+            command.downgrade(cfg, "0017")
+            insp = sa.inspect(engine)
+            for table in treatment_tables:
+                assert not insp.has_table(table), table
+            assert insp.has_table("risks")
+            assert insp.has_table("risk_scores")
+        finally:
+            command.upgrade(cfg, "head")
+        insp = sa.inspect(engine)
+        for table in treatment_tables:
+            assert insp.has_table(table), table
+        assert insp.has_table("risks")
+    finally:
+        engine.dispose()

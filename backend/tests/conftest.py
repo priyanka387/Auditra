@@ -57,6 +57,7 @@ def db(database):
             sa.text(
                 "TRUNCATE discovery_evidence, discovered_asset_runs, discovered_assets, discovery_runs, discovery_sources, "
                 "assessment_responses, risk_assessments, assessment_questions, assessment_sections, assessment_templates, "
+                "risk_treatment_residual_assessments, risk_treatment_actions, risk_treatments, "
                 "risk_scores, risk_severity_thresholds, risk_impact_levels, risk_likelihood_levels, risk_scoring_frameworks, "
                 "risks, risk_categories, audit_events, model_usage_events, model_discovery, agent_model_associations, agents, applications, "
                 "model_deployments, deployment_endpoints, model_versions, "
