@@ -7,21 +7,33 @@ into the module's domain error (plan §48 — the DB, not the service,
 enforces one active treatment per risk).
 """
 
+from collections.abc import Sequence
 from datetime import UTC, date, datetime
 from uuid import UUID
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.modules.risk.models import Risk
+from app.modules.risk_scoring.models import RiskScore
 from app.modules.risk_treatment.enums import ACTIVE_TREATMENT_STATUSES
 from app.modules.risk_treatment.errors import (
     InvalidRiskTreatmentQueryError,
     RiskTreatmentActiveExistsError,
     RiskTreatmentError,
 )
-from app.modules.risk_treatment.models import RiskTreatment, RiskTreatmentAction
-from app.modules.risk_treatment.schemas import TreatmentActionFilter, TreatmentFilter
+from app.modules.risk_treatment.metrics import OPEN_ACTION_STATUSES
+from app.modules.risk_treatment.models import (
+    RiskTreatment,
+    RiskTreatmentAction,
+    RiskTreatmentResidualAssessment,
+)
+from app.modules.risk_treatment.schemas import (
+    ResidualAssessmentFilter,
+    TreatmentActionFilter,
+    TreatmentFilter,
+)
 
 # RF-04 sorts are date/audit oriented: when it was decided, when it last
 # moved, and when it is due to finish (title/owner sorts are deliberately
@@ -257,3 +269,171 @@ def commit_action(db: Session) -> None:
     except IntegrityError as exc:
         db.rollback()
         raise RiskTreatmentError("treatment action could not be saved") from exc
+
+
+# --- expected residual assessments --------------------------------------------
+
+
+def create_residual(db: Session, **fields) -> RiskTreatmentResidualAssessment:
+    residual = RiskTreatmentResidualAssessment(**fields)
+    db.add(residual)
+    return residual
+
+
+def list_residuals(
+    db: Session, tenant_id: UUID, treatment_id: UUID, filters: ResidualAssessmentFilter
+) -> tuple[list[RiskTreatmentResidualAssessment], int]:
+    """Append-only history, newest snapshot first (plan §23)."""
+    conditions = [
+        RiskTreatmentResidualAssessment.tenant_id == tenant_id,
+        RiskTreatmentResidualAssessment.treatment_id == treatment_id,
+    ]
+    total = (
+        db.scalar(
+            select(func.count()).select_from(RiskTreatmentResidualAssessment).where(*conditions)
+        )
+        or 0
+    )
+    items = list(
+        db.scalars(
+            select(RiskTreatmentResidualAssessment)
+            .where(*conditions)
+            .order_by(
+                RiskTreatmentResidualAssessment.created_at.desc(),
+                RiskTreatmentResidualAssessment.id.desc(),
+            )
+            .offset((filters.page - 1) * filters.page_size)
+            .limit(filters.page_size)
+        )
+    )
+    return items, total
+
+
+def commit_residual(db: Session) -> None:
+    """Persist a residual snapshot (append-only, no unique constraints)."""
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise RiskTreatmentError("residual assessment could not be saved") from exc
+
+
+# --- treatment overview (plan §44/§45) ----------------------------------------
+
+
+def count_active_risks(db: Session, tenant_id: UUID) -> int:
+    """The register's live population: non-archived risks only."""
+    return (
+        db.scalar(
+            select(func.count())
+            .select_from(Risk)
+            .where(Risk.tenant_id == tenant_id, Risk.archived_at.is_(None))
+        )
+        or 0
+    )
+
+
+def count_risks_with_active_treatment(db: Session, tenant_id: UUID) -> int:
+    """Risks currently covered by an active treatment.
+
+    Ruling 5's partial unique index keeps the join to at most one row
+    per risk, so counting joined risks cannot fan out.
+    """
+    return (
+        db.scalar(
+            select(func.count(func.distinct(Risk.id)))
+            .select_from(Risk)
+            .join(
+                RiskTreatment,
+                and_(
+                    RiskTreatment.risk_id == Risk.id,
+                    RiskTreatment.status.in_(tuple(ACTIVE_TREATMENT_STATUSES)),
+                ),
+            )
+            .where(Risk.tenant_id == tenant_id, Risk.archived_at.is_(None))
+        )
+        or 0
+    )
+
+
+def treatment_status_distribution(db: Session, tenant_id: UUID) -> dict[str, int]:
+    """Status counts across ALL treatments — history included (plan §44)."""
+    rows = db.execute(
+        select(RiskTreatment.status, func.count())
+        .where(RiskTreatment.tenant_id == tenant_id)
+        .group_by(RiskTreatment.status)
+    ).all()
+    return {status: int(count) for status, count in rows}
+
+
+def treatment_strategy_distribution(db: Session, tenant_id: UUID) -> dict[str, int]:
+    rows = db.execute(
+        select(RiskTreatment.strategy, func.count())
+        .where(RiskTreatment.tenant_id == tenant_id)
+        .group_by(RiskTreatment.strategy)
+    ).all()
+    return {strategy: int(count) for strategy, count in rows}
+
+
+def count_overdue_actions(db: Session, tenant_id: UUID, today: date) -> int:
+    """Open actions past due — the SQL twin of ``metrics.action_is_overdue``
+    (Ruling 9: terminals never count)."""
+    return (
+        db.scalar(
+            select(func.count())
+            .select_from(RiskTreatmentAction)
+            .where(
+                RiskTreatmentAction.tenant_id == tenant_id,
+                RiskTreatmentAction.status.in_(tuple(OPEN_ACTION_STATUSES)),
+                RiskTreatmentAction.due_date < today,
+            )
+        )
+        or 0
+    )
+
+
+def count_overdue_treatments(db: Session, tenant_id: UUID, today: date) -> int:
+    """Active treatments past target — SQL twin of ``metrics.treatment_is_overdue``."""
+    return (
+        db.scalar(
+            select(func.count())
+            .select_from(RiskTreatment)
+            .where(
+                RiskTreatment.tenant_id == tenant_id,
+                RiskTreatment.status.in_(tuple(ACTIVE_TREATMENT_STATUSES)),
+                RiskTreatment.target_completion_date < today,
+            )
+        )
+        or 0
+    )
+
+
+def count_untreated_risks_by_severity(
+    db: Session, tenant_id: UUID, severities: Sequence[str]
+) -> dict[str, int]:
+    """Active risks whose *current* RF-03 score is in ``severities`` and
+    that have no active treatment (plan §45).
+
+    An EXISTS anti-join against the partial active-treatment index does
+    the filtering in SQL; archived risks and stale scores never match.
+    """
+    if not severities:
+        return {}
+    rows = db.execute(
+        select(RiskScore.severity, func.count())
+        .join(Risk, Risk.id == RiskScore.risk_id)
+        .where(
+            RiskScore.tenant_id == tenant_id,
+            RiskScore.is_current.is_(True),
+            RiskScore.severity.in_(tuple(severities)),
+            Risk.archived_at.is_(None),
+            ~exists(
+                select(RiskTreatment.id).where(
+                    RiskTreatment.risk_id == Risk.id,
+                    RiskTreatment.status.in_(tuple(ACTIVE_TREATMENT_STATUSES)),
+                )
+            ),
+        )
+        .group_by(RiskScore.severity)
+    ).all()
+    return {severity: int(count) for severity, count in rows}

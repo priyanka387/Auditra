@@ -393,6 +393,16 @@ class ResidualAssessmentListResponse(BaseModel):
     total_pages: int
 
 
+class ResidualAssessmentFilter(BaseModel):
+    """Pagination only: residual history is always newest-first and has
+    no user-facing columns to filter or sort (plan §36)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    page: int = Field(default=1, ge=1)
+    page_size: int = Field(default=25, ge=1, le=100)
+
+
 # --- treatment overview (dashboard) ------------------------------------------
 
 

@@ -47,6 +47,7 @@ class AuditEventType(StrEnum):
     RISK_TREATMENT_ACTION_UPDATED = "risk.treatment_action_updated"
     RISK_TREATMENT_ACTION_COMPLETED = "risk.treatment_action_completed"
     RISK_TREATMENT_ACTION_CANCELLED = "risk.treatment_action_cancelled"
+    RISK_TREATMENT_RESIDUAL_ASSESSMENT_CREATED = "risk.treatment_residual_assessment_created"
 
 
 EVENT_TYPE_PATTERN = re.compile(r"^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$")

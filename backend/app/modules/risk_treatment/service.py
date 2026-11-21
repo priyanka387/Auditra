@@ -24,31 +24,46 @@ from app.modules.audit.service import AuditService
 from app.modules.risk import repository as risk_repository
 from app.modules.risk.errors import RiskArchivedError, RiskNotFoundError
 from app.modules.risk.models import Risk
+from app.modules.risk_scoring import repository as risk_scoring_repository
+from app.modules.risk_scoring.engine import ScoreCalculator, SeverityClassifier
+from app.modules.risk_scoring.enums import RiskSeverity
+from app.modules.risk_scoring.errors import ScoringFrameworkNotFoundError
 from app.modules.risk_treatment import repository
 from app.modules.risk_treatment.enums import (
     ACTION_TRANSITIONS,
     ACTIVE_TREATMENT_STATUSES,
     TREATMENT_TRANSITIONS,
+    ResidualAssessmentType,
     RiskTreatmentStatus,
     RiskTreatmentStrategy,
     TreatmentActionStatus,
 )
 from app.modules.risk_treatment.errors import (
     InvalidRiskTreatmentActionStatusError,
+    InvalidRiskTreatmentResidualError,
     InvalidRiskTreatmentStatusError,
     RiskTreatmentActionNotFoundError,
     RiskTreatmentActiveExistsError,
     RiskTreatmentError,
     RiskTreatmentNotFoundError,
 )
-from app.modules.risk_treatment.models import RiskTreatment, RiskTreatmentAction
+from app.modules.risk_treatment.models import (
+    RiskTreatment,
+    RiskTreatmentAction,
+    RiskTreatmentResidualAssessment,
+)
 from app.modules.risk_treatment.schemas import (
+    ResidualAssessmentCreate,
+    ResidualAssessmentFilter,
     TreatmentActionCreate,
     TreatmentActionFilter,
     TreatmentActionUpdate,
     TreatmentCancelRequest,
     TreatmentCreate,
     TreatmentFilter,
+    TreatmentOverviewResponse,
+    TreatmentStatusDistribution,
+    TreatmentStrategyDistribution,
     TreatmentUpdate,
 )
 
@@ -378,6 +393,135 @@ class RiskTreatmentService:
         repository.commit_treatment(self.db)
         self._log("risk treatment cancelled", treatment, ["status", "cancelled_at"])
         return treatment
+
+    # --- expected residual risk (plan §22-§24) --------------------------------
+
+    def create_residual(
+        self, treatment_id: UUID, payload: ResidualAssessmentCreate
+    ) -> RiskTreatmentResidualAssessment:
+        """Snapshot what the organization *expects* after treatment.
+
+        Score and severity always come from the RF-03 engine reading the
+        tenant's framework configuration — this module never carries
+        score or severity literals (plan Task 6 Step 3).
+        """
+        treatment = self._entity(treatment_id)
+        # Ruling 10: RF-04 records expectations only — a verified claim
+        # needs the control/evidence workflow (RF-07) that does not exist
+        if payload.assessment_type != ResidualAssessmentType.EXPECTED:
+            raise InvalidRiskTreatmentResidualError(
+                f"assessment type '{payload.assessment_type}' is not supported; "
+                "only 'expected' residual risk may be recorded"
+            )
+        framework = risk_scoring_repository.find_default_framework(self.db, self.tenant_id)
+        if framework is None:
+            raise ScoringFrameworkNotFoundError("no active scoring framework found")
+        likelihood_level = risk_scoring_repository.get_likelihood_level(
+            self.db, framework.id, payload.likelihood
+        )
+        if likelihood_level is None or not likelihood_level.is_active:
+            raise InvalidRiskTreatmentResidualError(
+                f"likelihood value {payload.likelihood} is not valid "
+                f"for framework '{framework.name}'"
+            )
+        impact_level = risk_scoring_repository.get_impact_level(
+            self.db, framework.id, payload.impact
+        )
+        if impact_level is None or not impact_level.is_active:
+            raise InvalidRiskTreatmentResidualError(
+                f"impact value {payload.impact} is not valid for framework '{framework.name}'"
+            )
+
+        _, _, thresholds = risk_scoring_repository.get_framework_config(self.db, framework.id)
+        calculated = ScoreCalculator.calculate(payload.likelihood, payload.impact, framework)
+        severity = SeverityClassifier.classify(calculated, thresholds)
+
+        residual = repository.create_residual(
+            self.db,
+            id=uuid4(),
+            tenant_id=self.tenant_id,
+            treatment_id=treatment_id,
+            likelihood_value=payload.likelihood,
+            impact_value=payload.impact,
+            calculated_score=calculated,
+            severity=severity,
+            assessment_type=payload.assessment_type.value,
+            created_by=self.actor,
+        )
+        self.audit.record_event(
+            event_type=AuditEventType.RISK_TREATMENT_RESIDUAL_ASSESSMENT_CREATED,
+            resource_type="treatment",
+            resource_id=str(treatment_id),
+            after_state={
+                "risk_id": str(treatment.risk_id),
+                "treatment_id": str(treatment_id),
+                "likelihood": payload.likelihood,
+                "impact": payload.impact,
+                "calculated_score": calculated,
+                "severity": severity,
+                "assessment_type": payload.assessment_type.value,
+            },
+            metadata={"risk_id": str(treatment.risk_id), "framework_id": str(framework.id)},
+        )
+        repository.commit_residual(self.db)
+        logger.info(
+            "expected residual risk recorded",
+            extra={
+                "risk_treatment_id": str(treatment_id),
+                "tenant_id": str(self.tenant_id),
+                "risk_id": str(treatment.risk_id),
+                "calculated_score": calculated,
+                "severity": severity,
+                "request_id": self.request_id,
+            },
+        )
+        return residual
+
+    def list_residual(
+        self, treatment_id: UUID, filters: ResidualAssessmentFilter
+    ) -> tuple[list[RiskTreatmentResidualAssessment], int]:
+        """Newest snapshots first; the path treatment must exist (404)."""
+        self._entity(treatment_id)
+        return repository.list_residuals(self.db, self.tenant_id, treatment_id, filters)
+
+    def get_overview(self) -> TreatmentOverviewResponse:
+        """Treatment dashboard aggregates (plan §44/§45) — data only.
+
+        Distributions cover every treatment of the tenant (history
+        included); overdue and untreated counts reuse the derived
+        predicates' SQL twins; archived risks never count.
+        """
+        today = datetime.now(UTC).date()
+        total_risks = repository.count_active_risks(self.db, self.tenant_id)
+        with_treatment = repository.count_risks_with_active_treatment(self.db, self.tenant_id)
+        status_counts = repository.treatment_status_distribution(self.db, self.tenant_id)
+        strategy_counts = repository.treatment_strategy_distribution(self.db, self.tenant_id)
+        untreated = repository.count_untreated_risks_by_severity(
+            self.db,
+            self.tenant_id,
+            [RiskSeverity.CRITICAL.value, RiskSeverity.HIGH.value],
+        )
+        return TreatmentOverviewResponse(
+            total_risks=total_risks,
+            risks_with_treatment=with_treatment,
+            risks_without_treatment=total_risks - with_treatment,
+            status_distribution=TreatmentStatusDistribution(
+                **{
+                    status.value: status_counts.get(status.value, 0)
+                    for status in RiskTreatmentStatus
+                }
+            ),
+            strategy_distribution=TreatmentStrategyDistribution(
+                **{
+                    strategy.value: strategy_counts.get(strategy.value, 0)
+                    for strategy in RiskTreatmentStrategy
+                }
+            ),
+            overdue_actions=repository.count_overdue_actions(self.db, self.tenant_id, today),
+            overdue_treatments=repository.count_overdue_treatments(self.db, self.tenant_id, today),
+            untreated_critical=untreated.get(RiskSeverity.CRITICAL.value, 0),
+            untreated_high=untreated.get(RiskSeverity.HIGH.value, 0),
+        )
 
     # --- internals ------------------------------------------------------------
 
