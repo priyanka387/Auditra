@@ -21,7 +21,7 @@ from app.modules.risk_treatment.errors import (
     RiskTreatmentError,
 )
 from app.modules.risk_treatment.models import RiskTreatment, RiskTreatmentAction
-from app.modules.risk_treatment.schemas import TreatmentFilter
+from app.modules.risk_treatment.schemas import TreatmentActionFilter, TreatmentFilter
 
 # RF-04 sorts are date/audit oriented: when it was decided, when it last
 # moved, and when it is due to finish (title/owner sorts are deliberately
@@ -162,3 +162,98 @@ def commit_treatment(db: Session) -> None:
         if "uq_risk_treatments_risk_active" in str(exc.orig):
             raise RiskTreatmentActiveExistsError("risk already has an active treatment") from None
         raise RiskTreatmentError("treatment could not be saved") from exc
+
+
+# --- treatment actions -------------------------------------------------------
+
+# Actions sort on when the work was logged and when it is due (plan §36):
+# the same small-whitelist approach as treatments
+ACTION_SORT_COLUMNS = {
+    "created_at": RiskTreatmentAction.created_at,
+    "due_date": RiskTreatmentAction.due_date,
+}
+
+
+def create_action(db: Session, **fields) -> RiskTreatmentAction:
+    action = RiskTreatmentAction(**fields)
+    db.add(action)
+    return action
+
+
+def get_action(db: Session, tenant_id: UUID, action_id: UUID) -> RiskTreatmentAction | None:
+    return db.scalar(
+        select(RiskTreatmentAction).where(
+            RiskTreatmentAction.tenant_id == tenant_id,
+            RiskTreatmentAction.id == action_id,
+        )
+    )
+
+
+def get_actions_by_treatment(db: Session, treatment_id: UUID) -> list[RiskTreatmentAction]:
+    """Every action of a treatment in one query (progress + audit counts).
+
+    The caller (route/service) has already resolved the treatment in its
+    tenant, so this lookup keys only on the treatment id.
+    """
+    return list(
+        db.scalars(
+            select(RiskTreatmentAction)
+            .where(RiskTreatmentAction.treatment_id == treatment_id)
+            .order_by(RiskTreatmentAction.created_at, RiskTreatmentAction.id)
+        )
+    )
+
+
+def count_actions_by_treatment(db: Session, treatment_id: UUID) -> int:
+    return (
+        db.scalar(
+            select(func.count())
+            .select_from(RiskTreatmentAction)
+            .where(RiskTreatmentAction.treatment_id == treatment_id)
+        )
+        or 0
+    )
+
+
+def list_actions(
+    db: Session, tenant_id: UUID, treatment_id: UUID, filters: TreatmentActionFilter
+) -> tuple[list[RiskTreatmentAction], int]:
+    conditions = [
+        RiskTreatmentAction.tenant_id == tenant_id,
+        RiskTreatmentAction.treatment_id == treatment_id,
+    ]
+    if filters.status is not None:
+        conditions.append(RiskTreatmentAction.status == filters.status)
+    if filters.owner is not None:
+        conditions.append(RiskTreatmentAction.owner == filters.owner)
+
+    total = db.scalar(select(func.count()).select_from(RiskTreatmentAction).where(*conditions)) or 0
+
+    sort_column = ACTION_SORT_COLUMNS.get(filters.sort_by)
+    if sort_column is None:
+        raise InvalidRiskTreatmentQueryError(f"unsupported sort field '{filters.sort_by}'")
+    ordering = sort_column.desc() if filters.sort_order == "desc" else sort_column.asc()
+    items = list(
+        db.scalars(
+            select(RiskTreatmentAction)
+            .where(*conditions)
+            .order_by(ordering, RiskTreatmentAction.id)
+            .offset((filters.page - 1) * filters.page_size)
+            .limit(filters.page_size)
+        )
+    )
+    return items, total
+
+
+def commit_action(db: Session) -> None:
+    """Persist an action mutation.
+
+    Actions carry no unique constraint of their own; an integrity
+    failure here means the parent treatment vanished mid-request, so the
+    transaction rolls back instead of half-applying the change.
+    """
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise RiskTreatmentError("treatment action could not be saved") from exc

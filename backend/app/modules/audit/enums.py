@@ -43,6 +43,10 @@ class AuditEventType(StrEnum):
     RISK_TREATMENT_COMPLETED = "risk.treatment_completed"
     RISK_TREATMENT_CANCELLED = "risk.treatment_cancelled"
     RISK_TREATMENT_ACCEPTANCE_RECORDED = "risk.treatment_acceptance_recorded"
+    RISK_TREATMENT_ACTION_CREATED = "risk.treatment_action_created"
+    RISK_TREATMENT_ACTION_UPDATED = "risk.treatment_action_updated"
+    RISK_TREATMENT_ACTION_COMPLETED = "risk.treatment_action_completed"
+    RISK_TREATMENT_ACTION_CANCELLED = "risk.treatment_action_cancelled"
 
 
 EVENT_TYPE_PATTERN = re.compile(r"^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$")
