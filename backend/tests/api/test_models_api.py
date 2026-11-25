@@ -289,6 +289,18 @@ def test_openapi_contract(client):
         "/api/v1/risks/{risk_id}/scores/current",
         "/api/v1/risks/{risk_id}/scores/recalculate",
         "/api/v1/risks/{risk_id}/scores/override",
+        # RF-04 risk treatment: nested treatments + treatment/action/residual
+        # endpoints + overview (15 new operations on 10 path keys)
+        "/api/v1/risks/{risk_id}/treatments",
+        "/api/v1/treatments/overview",
+        "/api/v1/treatments/{treatment_id}",
+        "/api/v1/treatments/{treatment_id}/complete",
+        "/api/v1/treatments/{treatment_id}/cancel",
+        "/api/v1/treatments/{treatment_id}/actions",
+        "/api/v1/treatments/{treatment_id}/residual-assessments",
+        "/api/v1/treatment-actions/{action_id}",
+        "/api/v1/treatment-actions/{action_id}/complete",
+        "/api/v1/treatment-actions/{action_id}/cancel",
     } <= set(paths)
     assert {"post", "get"} <= set(paths["/api/v1/models"])
     assert {"get", "patch", "delete"} <= set(paths["/api/v1/models/{model_id}"])
@@ -300,9 +312,10 @@ def test_openapi_contract(client):
     # includes the Discovered Asset Catalog read endpoints (Sub-feature 4),
     # the nested evidence listing (Sub-feature 9), the RF-01 risk
     # register + taxonomy endpoints, the RF-02 assessment workflow +
-    # template catalog endpoints and the RF-03 scoring framework /
-    # score / overview endpoints (10 new operations)
-    assert sum(len(methods) for methods in paths.values()) == 99
+    # template catalog endpoints, the RF-03 scoring framework /
+    # score / overview endpoints (10 new operations) and the RF-04
+    # treatment / action / residual endpoints (15 new operations)
+    assert sum(len(methods) for methods in paths.values()) == 114
 
     schemas = app.openapi()["components"]["schemas"]
     assert {"ModelVersionCreate", "ModelVersionResponse"} <= set(schemas)
