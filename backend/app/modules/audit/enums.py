@@ -36,6 +36,18 @@ class AuditEventType(StrEnum):
     RISK_SCORE_OVERRIDDEN = "risk.score_overridden"
     SCORING_FRAMEWORK_CREATED = "scoring_framework.created"
     SCORING_FRAMEWORK_UPDATED = "scoring_framework.updated"
+    RISK_TREATMENT_CREATED = "risk.treatment_created"
+    RISK_TREATMENT_UPDATED = "risk.treatment_updated"
+    RISK_TREATMENT_STRATEGY_CHANGED = "risk.treatment_strategy_changed"
+    RISK_TREATMENT_OWNER_CHANGED = "risk.treatment_owner_changed"
+    RISK_TREATMENT_COMPLETED = "risk.treatment_completed"
+    RISK_TREATMENT_CANCELLED = "risk.treatment_cancelled"
+    RISK_TREATMENT_ACCEPTANCE_RECORDED = "risk.treatment_acceptance_recorded"
+    RISK_TREATMENT_ACTION_CREATED = "risk.treatment_action_created"
+    RISK_TREATMENT_ACTION_UPDATED = "risk.treatment_action_updated"
+    RISK_TREATMENT_ACTION_COMPLETED = "risk.treatment_action_completed"
+    RISK_TREATMENT_ACTION_CANCELLED = "risk.treatment_action_cancelled"
+    RISK_TREATMENT_RESIDUAL_ASSESSMENT_CREATED = "risk.treatment_residual_assessment_created"
 
 
 EVENT_TYPE_PATTERN = re.compile(r"^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$")

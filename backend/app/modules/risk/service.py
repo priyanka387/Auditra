@@ -37,6 +37,8 @@ from app.modules.risk.schemas import (
 )
 from app.modules.risk_scoring import repository as risk_scoring_repository
 from app.modules.risk_scoring.models import RiskScore
+from app.modules.risk_treatment.models import RiskTreatment
+from app.modules.risk_treatment.service import RiskTreatmentService
 
 logger = logging.getLogger("auditra.risk")
 
@@ -336,6 +338,22 @@ class RiskService:
         return risk_scoring_repository.get_current_scores_by_risk_ids(
             self.db, self.tenant_id, risk_ids
         )
+
+    def resolve_treatments(self, risks: Sequence[Risk]) -> dict[UUID, RiskTreatment]:
+        """Active treatments for a page of risks in one query (RF-04 §42).
+
+        Routes attach these as the register's ``treatment`` summary
+        without touching the cross-module service themselves; a missing
+        entry means untreated — never a fabricated status. Delegates to
+        ``RiskTreatmentService.resolve_active`` so both modules share one
+        definition of "active" (mirrors ``resolve_scores``).
+        """
+        return RiskTreatmentService(
+            self.db,
+            self.tenant_id,
+            request_id=self.request_id,
+            actor=self.actor,
+        ).resolve_active(risks)
 
     def _entity(self, risk_id: UUID) -> Risk:
         risk = repository.get_risk(self.db, self.tenant_id, risk_id)

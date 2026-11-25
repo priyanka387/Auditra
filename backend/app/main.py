@@ -31,6 +31,13 @@ from app.modules.risk.routes import categories_router as risk_category_router
 from app.modules.risk.routes import router as risk_router
 from app.modules.risk_scoring.routes import router as risk_scoring_router
 from app.modules.risk_scoring.routes import scores_router as risk_score_router
+from app.modules.risk_treatment.routes import (
+    treatment_actions_router as risk_treatment_action_router,
+)
+from app.modules.risk_treatment.routes import (
+    treatments_nested_router as risk_treatment_nested_router,
+)
+from app.modules.risk_treatment.routes import treatments_router as risk_treatment_router
 
 logger = logging.getLogger("auditra.http")
 
@@ -117,6 +124,9 @@ def create_app() -> FastAPI:
     app.include_router(assessment_template_router)
     app.include_router(risk_scoring_router)
     app.include_router(risk_score_router)
+    app.include_router(risk_treatment_nested_router)
+    app.include_router(risk_treatment_router)
+    app.include_router(risk_treatment_action_router)
     app.include_router(audit_router)
     return app
 
