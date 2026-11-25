@@ -31,6 +31,7 @@ Specs: `docs/features/model-inventory/spec.md`, `docs/features/model-inventory/v
   [x] RF-01 Risk Register & Taxonomy
   [x] RF-02 AI Risk Assessment
   [x] RF-03 Risk Scoring & Prioritization
+  [x] RF-04 Risk Treatment & Mitigation
 ```
 
 ## Prerequisites
@@ -93,7 +94,14 @@ Endpoints: `/health`, `/api/v1/models`, `/api/v1/models/{model_id}`,
 `/api/v1/risk-scoring/overview`,
 `/api/v1/risks/{risk_id}/scores`, `/api/v1/risks/{risk_id}/scores/current`,
 `/api/v1/risks/{risk_id}/scores/recalculate`,
-`/api/v1/risks/{risk_id}/scores/override`
+`/api/v1/risks/{risk_id}/scores/override`,
+`/api/v1/risks/{risk_id}/treatments`, `/api/v1/treatments/overview`,
+`/api/v1/treatments/{treatment_id}`, `/api/v1/treatments/{treatment_id}/complete`,
+`/api/v1/treatments/{treatment_id}/cancel`, `/api/v1/treatments/{treatment_id}/actions`,
+`/api/v1/treatments/{treatment_id}/residual-assessments`,
+`/api/v1/treatment-actions/{action_id}`,
+`/api/v1/treatment-actions/{action_id}/complete`,
+`/api/v1/treatment-actions/{action_id}/cancel`
 (OpenAPI at `/docs`).
 
 Risk & Compliance Management: RF-01 ships the risk register and its
@@ -117,5 +125,15 @@ current score, override with a mandatory justification while preserving
 the calculated result, filter and sort the register by score/severity/
 priority, and read the prioritization overview (distribution, heat-map
 cells, top risks) — every scoring decision recorded in the audit trail.
+
+RF-04 adds risk treatment & mitigation: choose a strategy (mitigate,
+accept, avoid, transfer) for a risk with an owner, rationale and target
+dates — acceptance requires a documented rationale — plan the work as
+tracked actions with derived progress and overdue flags (computed at
+response time, never stored), complete or cancel treatments and actions
+with recorded reasons, snapshot the *expected* residual risk through the
+RF-03 engine (20 Critical → expected 8 Medium, never claimed as actual),
+filter the register by treatment state, and read the treatment overview —
+every treatment decision captured in the governance audit trail.
 
 Lint: `uv run ruff check .` and `uv run ruff format .` (from `backend/`).
