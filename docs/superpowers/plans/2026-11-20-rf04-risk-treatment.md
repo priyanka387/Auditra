@@ -64,23 +64,23 @@
 - Consumes: repo conventions (documented in this plan's Rulings).
 - Produces: committed plan; verified baseline; initialized ledger.
 
-- [ ] **Step 1: Verify workspace state**
+- [x] **Step 1: Verify workspace state**
 
 Run `git status`, `git branch --show-current`. Expected: branch `feature/rf04-risk-treatment` created from `feature/rf03-risk-scoring` HEAD, only this plan file untracked.
 
-- [ ] **Step 2: Install dependencies**
+- [x] **Step 2: Install dependencies**
 
 Run `uv sync` (with `UV_LINK_MODE=copy`) from `backend/`. Expected: exits 0.
 
-- [ ] **Step 3: Run the baseline suite**
+- [x] **Step 3: Run the baseline suite**
 
 Run `uv run pytest -q` from `backend/`. Expected: all existing tests pass (PostgreSQL reachable on localhost:5433). If failures pre-exist, stop and report.
 
-- [ ] **Step 4: Commit plan**
+- [x] **Step 4: Commit plan**
 
 Commit this plan file as `docs(risk): RF-04 risk treatment plan`. Expected: clean `git status` except future work.
 
-- [ ] **Step 5: Initialize ledger**
+- [x] **Step 5: Initialize ledger**
 
 Run `sdd-workspace` for this plan; create `progress.md` with first line `# SDD ledger — plan: docs/superpowers/plans/2026-11-20-rf04-risk-treatment.md`; write the pre-flight shared-interface rows (Task 2 models/enums/errors → Tasks 3–8; Task 3 schemas → Tasks 4–8; Task 4 treatment service → Tasks 7–8; Task 5 action service + metrics → Tasks 7–8; Task 6 residual/overview → Task 7; Task 7 bumps the OpenAPI count once → Task 8 must not; Task 6 `resolve_active` → Task 8 register join — no conflicts, names fixed by this plan's Interfaces blocks) and the baseline test count.
 
@@ -115,7 +115,7 @@ Run `sdd-workspace` for this plan; create `progress.md` with first line `# SDD l
   - Migration revision `"0018"`, `down_revision="0017"`, file `0018_risk_treatment.py`, docstring header `"""risk treatment (RF-04)"""`, explicit `op.create_table` style matching `0017`, reversible downgrade (drop indexes, then tables, children first).
   - conftest TRUNCATE list includes the three new tables.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `backend/tests/unit/test_risk_treatment_models.py`:
 - `test_treatment_enum_values` — `RiskTreatmentStrategy` == `{mitigate, accept, avoid, transfer}`; `RiskTreatmentStatus` == `{not_started, planned, in_progress, completed, cancelled}`; `TreatmentActionStatus` == `{todo, in_progress, completed, cancelled}`; `TreatmentPriority` == `{low, medium, high, critical}`; `ResidualAssessmentType` == `{expected, verified}`.
@@ -125,19 +125,19 @@ Run `sdd-workspace` for this plan; create `progress.md` with first line `# SDD l
 
 Extend `backend/tests/integration/test_migration.py` with `test_risk_treatment_tables_exist` — reflects all three tables via `sa.inspect`, asserting columns (`strategy`, `cancellation_reason`, `priority`, `assessment_type`) and FKs to `risks`, `risk_treatments`.
 
-- [ ] **Step 2: Run and watch them fail**
+- [x] **Step 2: Run and watch them fail**
 
 Run `uv run pytest tests/unit/test_risk_treatment_models.py tests/integration/test_migration.py -q`. Expected: FAIL/ERROR — `ModuleNotFoundError: app.modules.risk_treatment` (feature missing, not typo).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Create `__init__.py` (one-line docstring, risk/risk_scoring style), `enums.py`, `errors.py`, `models.py` per Interfaces; write migration `0018_risk_treatment.py`; add the three tables to the conftest TRUNCATE list (before `risks`).
 
-- [ ] **Step 4: Run and watch them pass**
+- [x] **Step 4: Run and watch them pass**
 
 Run `uv run pytest tests/unit/test_risk_treatment_models.py tests/integration/test_migration.py -q`. Expected: PASS. Then run the full suite `uv run pytest -q` — expected all green (conftest rebuilds the test DB from migrations each session).
 
-- [ ] **Step 5: Lint + commit**
+- [x] **Step 5: Lint + commit**
 
 `uv run ruff check .` clean; `uv run ruff format` on touched files. Commit: `feat(risk-treatment): treatment domain models, enums, errors and migration 0018 (RF-04)`.
 
@@ -172,7 +172,7 @@ Run `uv run pytest tests/unit/test_risk_treatment_models.py tests/integration/te
   - `TreatmentOverviewResponse` (plan §44/§45): `total_risks`, `risks_with_treatment`, `risks_without_treatment`, `status_distribution`, `strategy_distribution`, `overdue_actions: int`, `overdue_treatments: int`, `untreated_critical: int`, `untreated_high: int`.
   - `TreatmentSummary` (register embed, Ruling 13): `strategy`, `status`, `owner`, `target_completion_date`, `is_overdue` — scalar-only so `risk/schemas.py` imports only `app.modules.risk_treatment.enums` (mirrors `RiskScoreSummary`).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/unit/test_risk_treatment_schemas.py`:
 - `test_treatment_create_strips_title_and_defaults` (title "  Data Exposure Mitigation  " → stripped; status not settable).
@@ -189,19 +189,19 @@ Run `uv run pytest tests/unit/test_risk_treatment_models.py tests/integration/te
 - `test_treatment_filter_defaults` (page 1, page_size 25, sort_by created_at, sort_order desc).
 - `test_treatment_summary_is_scalar_only` (`TreatmentSummary.model_fields` exactly {strategy, status, owner, target_completion_date, is_overdue}).
 
-- [ ] **Step 2: Run and watch them fail**
+- [x] **Step 2: Run and watch them fail**
 
 Run `uv run pytest tests/unit/test_risk_treatment_schemas.py -q`. Expected: ERROR — `ModuleNotFoundError: app.modules.risk_treatment.schemas`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `schemas.py` per Interfaces (strip validators and tz-aware timestamp validators mirror `risk/schemas.py`; date cross-validators as `model_validator(mode="after")`).
 
-- [ ] **Step 4: Run and watch them pass**
+- [x] **Step 4: Run and watch them pass**
 
 Run `uv run pytest tests/unit/test_risk_treatment_schemas.py -q` → PASS. Full suite → green.
 
-- [ ] **Step 5: Lint + commit**
+- [x] **Step 5: Lint + commit**
 
 ruff clean. Commit: `feat(risk-treatment): treatment, action and residual schemas with validation (RF-04)`.
 
@@ -231,7 +231,7 @@ ruff clean. Commit: `feat(risk-treatment): treatment, action and residual schema
     - `treatment_audit_state(treatment) -> dict` module helper (governance projection: `risk_id`, `strategy`, `status`, `title`, `owner`, `planned_start_date`, `target_completion_date`, `completed_at`, `cancelled_at`, `cancellation_reason`).
   - Audit: `AuditEventType` gains the six treatment members of Ruling 11 (`RISK_TREATMENT_CREATED`, `RISK_TREATMENT_UPDATED`, `RISK_TREATMENT_STRATEGY_CHANGED`, `RISK_TREATMENT_OWNER_CHANGED`, `RISK_TREATMENT_COMPLETED`, `RISK_TREATMENT_CANCELLED`, `RISK_TREATMENT_ACCEPTANCE_RECORDED` — seven values; action/residual events land in Tasks 5–6).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/integration/test_risk_treatment_service.py` (fixtures: `client`-style seeding via `db` + `seed_risk_categories`/`seed_reference_data`; helpers: create a risk through RF-01's `RiskService`, create a second tenant with its own risk):
 - `test_create_treatment_persists_not_started_with_audit` (strategy `mitigate`, owner "Security Team", dates; status `not_started`; audit `risk.treatment_created`, resource_type `treatment`, metadata.risk_id; `created_by` null)
@@ -256,19 +256,19 @@ ruff clean. Commit: `feat(risk-treatment): treatment, action and residual schema
 - `test_cancel_completed_treatment_rejected` (409)
 - `test_cross_tenant_mutations_rejected` (update/complete/cancel tenant B's treatment from tenant A → 404)
 
-- [ ] **Step 2: Run and watch them fail**
+- [x] **Step 2: Run and watch them fail**
 
 Run `uv run pytest tests/integration/test_risk_treatment_service.py -q`. Expected: ERROR — `ModuleNotFoundError: app.modules.risk_treatment.repository` / service.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `repository.py` (tenant-scoped getters, filter builders, sort whitelist, count+offset list, `commit_treatment` mapping the active-index race), `service.py` (RiskTreatmentService + `treatment_audit_state`), extend `audit/enums.py` with the seven treatment event types.
 
-- [ ] **Step 4: Run and watch them pass**
+- [x] **Step 4: Run and watch them pass**
 
 `uv run pytest tests/integration/test_risk_treatment_service.py -q` → PASS. Full suite → green.
 
-- [ ] **Step 5: Lint + commit**
+- [x] **Step 5: Lint + commit**
 
 ruff clean. Commit: `feat(risk-treatment): treatment service with state machine, acceptance and audit (RF-04)`.
 
@@ -301,7 +301,7 @@ ruff clean. Commit: `feat(risk-treatment): treatment service with state machine,
     - `cancel(action_id, payload: TreatmentCancelRequest) -> RiskTreatmentAction` — tenant 404; current status must allow `cancelled` else 409; sets `cancelled_at`, `cancellation_reason`; audit `risk.treatment_action_cancelled` with reason; single commit.
   - Audit: `AuditEventType` gains `RISK_TREATMENT_ACTION_CREATED`, `RISK_TREATMENT_ACTION_UPDATED`, `RISK_TREATMENT_ACTION_COMPLETED`, `RISK_TREATMENT_ACTION_CANCELLED`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/unit/test_risk_treatment_metrics.py` (transient ORM objects; `today = date(2026, 11, 20)`):
 - `test_progress_three_actions_one_completed` → 33% (plan §56), remaining 2, in_progress counted.
@@ -326,19 +326,19 @@ ruff clean. Commit: `feat(risk-treatment): treatment service with state machine,
 - `test_treatment_progress_reflects_actions` (via `RiskTreatmentService.get` + `metrics.compute_progress` on `get_actions_by_treatment`: 3 actions → 1 completed → 33%; complete second → 66%; third → 100% — plan §18/§56)
 - `test_cross_tenant_action_mutations_rejected` (update/complete/cancel tenant B's action → 404)
 
-- [ ] **Step 2: Run and watch them fail**
+- [x] **Step 2: Run and watch them fail**
 
 Run `uv run pytest tests/unit/test_risk_treatment_metrics.py tests/integration/test_risk_treatment_action_service.py -q`. Expected: ERROR — `ModuleNotFoundError: app.modules.risk_treatment.metrics`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `metrics.py`, action repository functions, `RiskTreatmentActionService`, audit enum additions per Interfaces.
 
-- [ ] **Step 4: Run and watch them pass**
+- [x] **Step 4: Run and watch them pass**
 
 Run the two new files → PASS. Full suite → green.
 
-- [ ] **Step 5: Lint + commit**
+- [x] **Step 5: Lint + commit**
 
 ruff clean. Commit: `feat(risk-treatment): treatment actions with derived progress and overdue metrics (RF-04)`.
 
@@ -365,7 +365,7 @@ ruff clean. Commit: `feat(risk-treatment): treatment actions with derived progre
     - `untreated_critical` / `untreated_high` = active risks whose current RF-03 score severity is `critical`/`high` AND that have no active treatment (§45) — join `risk_scores WHERE is_current` + anti-join active treatments.
   - Audit: `AuditEventType` gains `RISK_TREATMENT_RESIDUAL_ASSESSMENT_CREATED`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/integration/test_risk_treatment_residual_service.py` (fixture: seeded scoring framework + risk + treatment):
 - `test_create_expected_residual_computes_via_rf03_engine` (likelihood 2, impact 4 → `calculated_score` 8, `severity` `medium` per the seeded thresholds 5–9; `assessment_type` `expected`; audit `risk.treatment_residual_assessment_created`)
@@ -385,19 +385,19 @@ ruff clean. Commit: `feat(risk-treatment): treatment actions with derived progre
 - `test_overview_excludes_archived_risks`
 - `test_overview_empty_tenant` (zeros everywhere — no division by zero)
 
-- [ ] **Step 2: Run and watch them fail**
+- [x] **Step 2: Run and watch them fail**
 
 Run the two new files → ERROR — `create_residual` / `get_overview` not found (feature missing, not typo).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Residual + overview repository queries and service methods per Interfaces; audit enum addition. Severity/score always through RF-03 engine.
 
-- [ ] **Step 4: Run and watch them pass**
+- [x] **Step 4: Run and watch them pass**
 
 Run the two new files → PASS. Full suite → green.
 
-- [ ] **Step 5: Lint + commit**
+- [x] **Step 5: Lint + commit**
 
 ruff clean. Commit: `feat(risk-treatment): expected residual risk via RF-03 engine and treatment overview (RF-04)`.
 
@@ -433,7 +433,7 @@ ruff clean. Commit: `feat(risk-treatment): expected residual risk via RF-03 engi
   - Errors use the existing envelope: 404 `RISK_TREATMENT_NOT_FOUND`/`RISK_TREATMENT_ACTION_NOT_FOUND`/`RISK_NOT_FOUND`/`SCORING_FRAMEWORK_NOT_FOUND`, 409 `RISK_TREATMENT_ACTIVE_EXISTS`/`RISK_TREATMENT_STATUS_INVALID`/`RISK_TREATMENT_ACTION_STATUS_INVALID`/`RISK_ARCHIVED`, 400 `RISK_TREATMENT_ERROR`/`RISK_TREATMENT_QUERY_INVALID`/`RISK_TREATMENT_RESIDUAL_INVALID`, 422 `VALIDATION_ERROR` for malformed bodies/blank reasons/inverted dates. Unknown query params → 400.
   - OpenAPI operation count: 99 + 15 new = 114 (verify the delta at runtime; adjust the asserted number to the real count if the existing 99 has drifted, and record the ruling).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/api/test_risk_treatment_api.py` (fixtures: `client`, `db`; helpers: create a risk via API, create a treatment via API):
 - `test_create_treatment_returns_201` (strategy mitigate, status `not_started`, owner echoed, dates echoed, `is_overdue` false, `action_stats` None)
@@ -460,19 +460,19 @@ ruff clean. Commit: `feat(risk-treatment): expected residual risk via RF-03 engi
 
 Also update `tests/api/test_models_api.py::test_openapi_contract`: add the new paths to the membership set and bump `== 99` to the verified new total (expected 114).
 
-- [ ] **Step 2: Run and watch them fail**
+- [x] **Step 2: Run and watch them fail**
 
 Run `uv run pytest tests/api/test_risk_treatment_api.py tests/api/test_models_api.py::test_openapi_contract -q`. Expected: FAIL with 404 NOT_FOUND (routes missing) and contract count mismatch.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `routes.py` with the three routers (overview declared first on the treatments router); service factories passing `settings.default_tenant_id`, `request_id`, `actor=None`; response builders attaching `is_overdue` (metrics with `date.today()`-equivalent UTC date) and `action_stats` on detail; register all three routers in `create_app()` (before `audit_router`, mirroring existing include order).
 
-- [ ] **Step 4: Run and watch them pass**
+- [x] **Step 4: Run and watch them pass**
 
 `uv run pytest tests/api/test_risk_treatment_api.py tests/api/test_models_api.py -q` → PASS. Full suite → green.
 
-- [ ] **Step 5: Lint + commit**
+- [x] **Step 5: Lint + commit**
 
 ruff clean. Commit: `feat(risk-treatment): treatment, action and residual REST APIs (RF-04)`.
 
@@ -498,7 +498,7 @@ ruff clean. Commit: `feat(risk-treatment): treatment, action and residual REST A
   - `risk/routes.py`: `RISK_QUERY_KEYS` gains `treatment_strategy, treatment_status, treatment_owner, treatment_overdue, treated`; `list_risks` gains matching `Query` params; `_risk_response` attaches `treatment` built from `treatments.get(risk.id)` (create/get/update responses resolve treatments for the single risk).
   - `risk/service.RiskTreatment`-aware helper: `RiskService.resolve_treatments(risks: Sequence[Risk]) -> dict[UUID, RiskTreatment]` — delegates to `RiskTreatmentService(...).resolve_active(risks)` (keeps routes free of cross-module repository calls; mirrors `resolve_scores`).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/api/test_risk_register_treatment_api.py` (fixtures: `client`, `db`; create risks via API, treatments via API):
 - `test_risk_list_treatment_null_when_untreated` (`treatment is None` on a risk with no treatment)
@@ -515,19 +515,19 @@ ruff clean. Commit: `feat(risk-treatment): treatment, action and residual REST A
 
 Unit addition in `tests/unit/test_risk_schemas.py`: `TreatmentSummary` scalar-only field set; `RiskResponse.treatment` defaults to None; naive `target_completion_date` is a date (type enforced).
 
-- [ ] **Step 2: Run and watch them fail**
+- [x] **Step 2: Run and watch them fail**
 
 Run `uv run pytest tests/api/test_risk_register_treatment_api.py -q`. Expected: FAIL — `treatment` missing from response / unknown query parameter (feature missing, not typo).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Per Interfaces: `TreatmentSummary` + `RiskResponse.treatment` + `RiskFilter` fields first, then repository join/filters, then `resolve_treatments`, then routes wiring.
 
-- [ ] **Step 4: Run and watch them pass**
+- [x] **Step 4: Run and watch them pass**
 
 `uv run pytest tests/api/test_risk_register_treatment_api.py -q` → PASS. Then RF-01/RF-03 regression: `uv run pytest tests/api/test_risks_api.py tests/api/test_risk_register_scoring_api.py tests/integration/test_risk_service.py tests/unit/test_risk_schemas.py -q` → PASS. Full suite → green.
 
-- [ ] **Step 5: Lint + commit**
+- [x] **Step 5: Lint + commit**
 
 ruff clean. Commit: `feat(risk): risk register treatment integration with filters (RF-04)`.
 
@@ -544,7 +544,7 @@ ruff clean. Commit: `feat(risk): risk register treatment integration with filter
 - Consumes: everything from Tasks 2–8.
 - Produces: green end-to-end proof; documented endpoints; pushed branch + PR.
 
-- [ ] **Step 1: Write the failing/verifying end-to-end test**
+- [x] **Step 1: Write the failing/verifying end-to-end test**
 
 `tests/e2e/test_risk_treatment_acceptance.py`:
 - `test_full_risk_treatment_journey` (plan §63 user journey / §64 example / §65 DoD):
@@ -564,11 +564,11 @@ ruff clean. Commit: `feat(risk): risk register treatment integration with filter
 - `test_cross_tenant_treatment_isolation` — tenant B's treatment, action, residual assessment are unreachable from tenant A (404s), and tenant A cannot create a treatment on tenant B's risk (plan §51).
 - `test_treatment_cancellation_journey` — create treatment → add action → cancel action with reason → cancel treatment with reason; both reasons stored and audited; cancelled treatment's risk still register-visible and `treated=false` (no active treatment).
 
-- [ ] **Step 2: Run it**
+- [x] **Step 2: Run it**
 
 `uv run pytest tests/e2e/test_risk_treatment_acceptance.py -q` → PASS. If RED: debug with systematic-debugging before proceeding.
 
-- [ ] **Step 3: Full acceptance sweep**
+- [x] **Step 3: Full acceptance sweep**
 
 - `uv run pytest -q` → entire suite green (no RF-01/RF-02/RF-03/Asset Discovery regression).
 - `uv run ruff check .` → clean; `uv run ruff format --check .` on touched files.
@@ -576,11 +576,11 @@ ruff clean. Commit: `feat(risk): risk register treatment integration with filter
 - `uv run python -m app.seed` twice → idempotent (RF-04 adds no seed data — assert no duplicate categories/templates/frameworks).
 - Verify OpenAPI: the 15 RF-04 paths appear in `app.openapi()` paths.
 
-- [ ] **Step 4: Update README**
+- [x] **Step 4: Update README**
 
 Add treatment endpoints to the README endpoint list (`/api/v1/risks/{risk_id}/treatments`, `/api/v1/treatments` + `overview`/`complete`/`cancel`/`actions`/`residual-assessments`, `/api/v1/treatment-actions` + `complete`/`cancel`), a one-line RF-04 mention, and tick the status checklist.
 
-- [ ] **Step 5: Commit, push, open PR**
+- [x] **Step 5: Commit, push, open PR**
 
 Commit `feat(risk): risk treatment and mitigation acceptance and docs (RF-04)`. Check off tasks in this plan file (`docs: check off RF-04 plan tasks`). Push `feature/rf04-risk-treatment` to `origin`. Open a PR against `main` (stack on `feature/rf03-risk-scoring` if RF-03 is still unmerged) with a summary of RF-04 scope + rulings. Expected: PR created; local suite green.
 
