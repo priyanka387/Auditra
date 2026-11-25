@@ -1,6 +1,6 @@
 """Unit tests: RF-01 risk and risk-category schemas."""
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from uuid import uuid4
 
 import pytest
@@ -14,8 +14,10 @@ from app.modules.risk.schemas import (
     RiskResponse,
     RiskScoreSummary,
     RiskUpdate,
+    TreatmentSummary,
 )
 from app.modules.risk_scoring.enums import RiskSeverity
+from app.modules.risk_treatment.enums import RiskTreatmentStatus, RiskTreatmentStrategy
 
 CATEGORY_ID = uuid4()
 
@@ -202,3 +204,102 @@ def test_risk_filter_accepts_scoring_fields():
 def test_risk_filter_rejects_invalid_priority():
     with pytest.raises(ValidationError):
         RiskFilter(priority=0)
+
+
+# --- RF-04 treatment summary ---------------------------------------------------
+
+
+def test_treatment_summary_scalar_fields():
+    summary = TreatmentSummary(
+        strategy="mitigate",
+        status="in_progress",
+        owner="Security Team",
+        target_completion_date=date(2027, 1, 15),
+        is_overdue=False,
+    )
+
+    assert summary.strategy == RiskTreatmentStrategy.MITIGATE
+    assert summary.status == RiskTreatmentStatus.IN_PROGRESS
+    assert summary.owner == "Security Team"
+    assert summary.target_completion_date == date(2027, 1, 15)
+    assert summary.is_overdue is False
+
+
+def test_treatment_summary_is_scalar_only():
+    # scalar-only like RiskScoreSummary: no nested refs may sneak in, and
+    # the five documented fields are the entire contract (plan §42)
+    with pytest.raises(ValidationError):
+        TreatmentSummary(
+            strategy="mitigate",
+            status="not_started",
+            owner=None,
+            target_completion_date=None,
+            is_overdue=False,
+            risk_id=uuid4(),
+        )
+
+
+def test_treatment_summary_rejects_unknown_strategy():
+    with pytest.raises(ValidationError):
+        TreatmentSummary(
+            strategy="ignore",
+            status="not_started",
+            owner=None,
+            target_completion_date=None,
+            is_overdue=False,
+        )
+
+
+def test_treatment_summary_target_date_type_enforced():
+    with pytest.raises(ValidationError):
+        TreatmentSummary(
+            strategy="mitigate",
+            status="not_started",
+            owner=None,
+            target_completion_date="not-a-date",
+            is_overdue=False,
+        )
+
+
+def test_risk_response_defaults_treatment_to_none():
+    response = RiskResponse.model_validate(
+        {
+            "id": uuid4(),
+            "tenant_id": uuid4(),
+            "title": "Untreated risk",
+            "category_id": CATEGORY_ID,
+            "category": {"id": CATEGORY_ID, "name": "Security", "slug": "security"},
+            "source": "manual",
+            "status": "open",
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
+        }
+    )
+    # no active treatment is null, never a fabricated status (plan §42)
+    assert response.treatment is None
+
+
+def test_risk_filter_accepts_treatment_fields():
+    filters = RiskFilter(
+        treatment_strategy="accept",
+        treatment_status="in_progress",
+        treatment_owner="Risk Committee",
+        treatment_overdue=True,
+        treated=False,
+    )
+
+    assert filters.treatment_strategy == RiskTreatmentStrategy.ACCEPT
+    assert filters.treatment_status == RiskTreatmentStatus.IN_PROGRESS
+    assert filters.treatment_owner == "Risk Committee"
+    assert filters.treatment_overdue is True
+    assert filters.treated is False
+
+
+def test_risk_filter_treatment_defaults_are_none():
+    filters = RiskFilter()
+
+    assert filters.treatment_strategy is None
+    assert filters.treatment_status is None
+    assert filters.treatment_owner is None
+    assert filters.treatment_overdue is None
+    assert filters.treated is None

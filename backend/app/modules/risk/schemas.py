@@ -8,13 +8,14 @@ silently entering the registry — scoring belongs to RF-03.
 """
 
 import re
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.modules.risk.enums import RiskSource, RiskStatus
 from app.modules.risk_scoring.enums import RiskSeverity
+from app.modules.risk_treatment.enums import RiskTreatmentStatus, RiskTreatmentStrategy
 
 MAX_TITLE = 255
 MAX_DESCRIPTION = 10000
@@ -73,6 +74,25 @@ class RiskScoreSummary(BaseModel):
         if value.tzinfo is None:
             raise ValueError("timestamp must be timezone-aware")
         return value
+
+
+class TreatmentSummary(BaseModel):
+    """Scalar snapshot of a risk's active treatment for register rows (RF-04 §42).
+
+    Deliberately scalar-only (no treatment/risk ref) so ``risk/schemas.py``
+    depends on nothing but the treatment enums — mirroring
+    ``RiskScoreSummary``. ``null`` on ``RiskResponse`` means untreated —
+    never a fabricated status — and only an *active* treatment is ever
+    summarized (completed/cancelled rows are history, Ruling 13).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    strategy: RiskTreatmentStrategy
+    status: RiskTreatmentStatus
+    owner: str | None = None
+    target_completion_date: date | None = None
+    is_overdue: bool
 
 
 class RiskCreate(BaseModel):
@@ -167,6 +187,7 @@ class RiskResponse(BaseModel):
     updated_by: str | None = None
     archived_at: datetime | None = None
     current_score: RiskScoreSummary | None = None
+    treatment: TreatmentSummary | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -210,6 +231,14 @@ class RiskFilter(BaseModel):
     likelihood: int | None = None
     impact: int | None = None
     framework_id: UUID | None = None
+    # RF-04 treatment filters: run against the LEFT JOINed *active*
+    # treatment, so any of them naturally restricts results to treated
+    # risks and completed/cancelled history never matches (Ruling 13)
+    treatment_strategy: RiskTreatmentStrategy | None = None
+    treatment_status: RiskTreatmentStatus | None = None
+    treatment_owner: str | None = Field(default=None, max_length=MAX_ASSIGNMENT)
+    treatment_overdue: bool | None = None
+    treated: bool | None = None
     sort_by: str = "updated_at"
     sort_order: str = "desc"
 

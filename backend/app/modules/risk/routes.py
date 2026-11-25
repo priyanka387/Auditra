@@ -7,6 +7,7 @@ sort fields surface as 400 domain errors), and response builders that
 resolve the embedded category/asset references without N+1 queries.
 """
 
+from datetime import UTC, datetime
 from math import ceil
 from typing import Annotated
 from uuid import UUID
@@ -34,9 +35,12 @@ from app.modules.risk.schemas import (
     RiskResponse,
     RiskScoreSummary,
     RiskUpdate,
+    TreatmentSummary,
 )
 from app.modules.risk.service import RiskCategoryService, RiskService
 from app.modules.risk_scoring.enums import RiskSeverity
+from app.modules.risk_treatment import metrics
+from app.modules.risk_treatment.enums import RiskTreatmentStatus, RiskTreatmentStrategy
 
 router = APIRouter(prefix="/api/v1/risks")
 categories_router = APIRouter(prefix="/api/v1/risk-categories")
@@ -60,6 +64,11 @@ RISK_QUERY_KEYS = {
     "likelihood",
     "impact",
     "framework_id",
+    "treatment_strategy",
+    "treatment_status",
+    "treatment_owner",
+    "treatment_overdue",
+    "treated",
     "sort_by",
     "sort_order",
 }
@@ -145,7 +154,24 @@ def _score_summary(score) -> RiskScoreSummary | None:
     )
 
 
-def _risk_response(risk, categories, assets, scores) -> RiskResponse:
+def _treatment_summary(treatment) -> TreatmentSummary | None:
+    """Scalar summary of the active treatment; None means untreated.
+
+    ``is_overdue`` is derived here with the same predicate the treatment
+    module uses (never stored), so the register and RF-04 agree.
+    """
+    if treatment is None:
+        return None
+    return TreatmentSummary(
+        strategy=treatment.strategy,
+        status=treatment.status,
+        owner=treatment.owner,
+        target_completion_date=treatment.target_completion_date,
+        is_overdue=metrics.treatment_is_overdue(treatment, datetime.now(UTC).date()),
+    )
+
+
+def _risk_response(risk, categories, assets, scores, treatments) -> RiskResponse:
     """Build one risk response with its resolved refs (no per-row queries)."""
     asset = assets.get(risk.asset_id) if risk.asset_id else None
     return RiskResponse.model_validate(
@@ -158,6 +184,7 @@ def _risk_response(risk, categories, assets, scores) -> RiskResponse:
             },
             "asset": None if asset is None else {"id": asset.id, "name": asset.name},
             "current_score": _score_summary(scores.get(risk.id)),
+            "treatment": _treatment_summary(treatments.get(risk.id)),
         },
         from_attributes=False,
     )
@@ -171,8 +198,9 @@ def _page_response(service: RiskService, filters) -> RiskListResponse:
     items, total = service.list(filters)
     categories, assets = service.resolve_refs(items)
     scores = service.resolve_scores(items)
+    treatments = service.resolve_treatments(items)
     return RiskListResponse(
-        items=[_risk_response(item, categories, assets, scores) for item in items],
+        items=[_risk_response(item, categories, assets, scores, treatments) for item in items],
         page=filters.page,
         page_size=filters.page_size,
         total=total,
@@ -193,7 +221,8 @@ def create_risk(
     risk = service.create(payload)
     categories, assets = service.resolve_refs([risk])
     scores = service.resolve_scores([risk])
-    return _risk_response(risk, categories, assets, scores)
+    treatments = service.resolve_treatments([risk])
+    return _risk_response(risk, categories, assets, scores, treatments)
 
 
 @router.get("", response_model=RiskListResponse)
@@ -216,6 +245,11 @@ def list_risks(
     likelihood: int | None = None,
     impact: int | None = None,
     framework_id: UUID | None = None,
+    treatment_strategy: RiskTreatmentStrategy | None = None,
+    treatment_status: RiskTreatmentStatus | None = None,
+    treatment_owner: Annotated[str | None, Query(max_length=255)] = None,
+    treatment_overdue: bool | None = None,
+    treated: bool | None = None,
     sort_by: str = "updated_at",
     sort_order: str = "desc",
 ) -> RiskListResponse:
@@ -237,6 +271,11 @@ def list_risks(
         likelihood=likelihood,
         impact=impact,
         framework_id=framework_id,
+        treatment_strategy=treatment_strategy,
+        treatment_status=treatment_status,
+        treatment_owner=treatment_owner,
+        treatment_overdue=treatment_overdue,
+        treated=treated,
         sort_by=sort_by,
         sort_order=sort_order,
     )
@@ -253,7 +292,8 @@ def get_risk(
     risk = service.get(risk_id)
     categories, assets = service.resolve_refs([risk])
     scores = service.resolve_scores([risk])
-    return _risk_response(risk, categories, assets, scores)
+    treatments = service.resolve_treatments([risk])
+    return _risk_response(risk, categories, assets, scores, treatments)
 
 
 @router.patch("/{risk_id}", response_model=RiskResponse)
@@ -267,7 +307,8 @@ def update_risk(
     risk = service.update(risk_id, payload)
     categories, assets = service.resolve_refs([risk])
     scores = service.resolve_scores([risk])
-    return _risk_response(risk, categories, assets, scores)
+    treatments = service.resolve_treatments([risk])
+    return _risk_response(risk, categories, assets, scores, treatments)
 
 
 @router.delete("/{risk_id}", status_code=204, response_class=Response)

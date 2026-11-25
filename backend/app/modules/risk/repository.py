@@ -3,9 +3,12 @@
 Mirrors ``asset_discovery/repository.py``: every read and write is
 filtered by ``tenant_id``, list queries compose optional filters over a
 whitelisted sort map, and commit helpers translate constraint races into
-the module's domain errors.
+the module's domain errors. RF-04 adds an outer join to the risk's
+*active* treatment: the partial unique index guarantees at most one
+matched row, so the join can never fan out a risk into duplicates.
 """
 
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import func, or_, select
@@ -22,6 +25,8 @@ from app.modules.risk.errors import (
 from app.modules.risk.models import Risk, RiskCategory
 from app.modules.risk.schemas import RiskCategoryFilter, RiskFilter
 from app.modules.risk_scoring.models import RiskScore
+from app.modules.risk_treatment.enums import ACTIVE_TREATMENT_STATUSES
+from app.modules.risk_treatment.models import RiskTreatment
 
 CATEGORY_SORT_COLUMNS = {
     "name": RiskCategory.name,
@@ -212,6 +217,30 @@ def _risk_conditions(tenant_id: UUID, filters: RiskFilter) -> list:
         conditions.append(RiskScore.impact_value == filters.impact)
     if filters.framework_id is not None:
         conditions.append(RiskScore.framework_id == filters.framework_id)
+    # RF-04 treatment filters run against the LEFT JOINed active
+    # treatment: equality on the joined row naturally implies treated,
+    # and an absent row (untreated) never matches a state filter
+    if filters.treated is True:
+        conditions.append(RiskTreatment.id.is_not(None))
+    elif filters.treated is False:
+        conditions.append(RiskTreatment.id.is_(None))
+    if filters.treatment_strategy is not None:
+        conditions.append(RiskTreatment.strategy == filters.treatment_strategy)
+    if filters.treatment_status is not None:
+        conditions.append(RiskTreatment.status == filters.treatment_status)
+    if filters.treatment_owner is not None:
+        conditions.append(RiskTreatment.owner == filters.treatment_owner)
+    if filters.treatment_overdue is True:
+        conditions.append(RiskTreatment.target_completion_date < datetime.now(UTC).date())
+    elif filters.treatment_overdue is False:
+        # exact negation-or-null: due later, due today, or no date at
+        # all — an untreated risk reads as "not overdue", not "overdue"
+        conditions.append(
+            or_(
+                RiskTreatment.target_completion_date.is_(None),
+                RiskTreatment.target_completion_date >= datetime.now(UTC).date(),
+            )
+        )
     if filters.search is not None:
         term = f"%{filters.search}%"
         conditions.append(
@@ -226,11 +255,27 @@ def _risk_conditions(tenant_id: UUID, filters: RiskFilter) -> list:
 
 
 def _risk_list_joins(statement):
-    """Asset + current-score outer joins shared by count and page queries."""
-    return statement.join(DiscoveredAsset, Risk.asset_id == DiscoveredAsset.id, isouter=True).join(
-        RiskScore,
-        (RiskScore.risk_id == Risk.id) & RiskScore.is_current.is_(True),
-        isouter=True,
+    """Asset + current-score + active-treatment outer joins shared by count
+    and page queries.
+
+    The treatment join keys on the active statuses only: history
+    (completed/cancelled) never joins, and Ruling 5's partial unique
+    index guarantees at most one matched row per risk — no fan-out.
+    """
+    return (
+        statement.join(DiscoveredAsset, Risk.asset_id == DiscoveredAsset.id, isouter=True)
+        .join(
+            RiskScore,
+            (RiskScore.risk_id == Risk.id) & RiskScore.is_current.is_(True),
+            isouter=True,
+        )
+        .join(
+            RiskTreatment,
+            (RiskTreatment.risk_id == Risk.id)
+            & (RiskTreatment.tenant_id == Risk.tenant_id)
+            & RiskTreatment.status.in_(tuple(ACTIVE_TREATMENT_STATUSES)),
+            isouter=True,
+        )
     )
 
 
